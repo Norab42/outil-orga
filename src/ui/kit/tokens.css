@@ -1,0 +1,215 @@
+/*
+ * Système de design commun à tous les modules.
+ * Couleurs en variables : thème clair par défaut, sombre selon le système ou le réglage.
+ */
+:root {
+  --fond: #f6f4ef;
+  --surface: #ffffff;
+  --surface-2: #efece4;
+  --bordure: #e2ddd2;
+  --texte: #1d2321;
+  --texte-doux: #5d6662;
+  --primaire: #1f6f63;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #dcefe9;
+  --accent: #e0a423;
+  --ok: #2e7d4f;
+  --ok-doux: #e1f2e7;
+  --attention: #b86200;
+  --attention-doux: #fdeedb;
+  --danger: #c0392b;
+  --danger-doux: #fbe4e1;
+  --ombre: 0 1px 2px rgb(30 35 33 / 0.06), 0 4px 16px rgb(30 35 33 / 0.06);
+
+  --rayon: 18px;
+  --rayon-petit: 12px;
+  --esp-1: 4px;
+  --esp-2: 8px;
+  --esp-3: 12px;
+  --esp-4: 16px;
+  --esp-5: 24px;
+  --esp-6: 32px;
+  --tactile: 48px;
+  --police: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
+  --chiffres: ui-rounded, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='clair']) {
+    --fond: #121615;
+    --surface: #1b211f;
+    --surface-2: #242b29;
+    --bordure: #2f3734;
+    --texte: #ecefed;
+    --texte-doux: #a3ada9;
+    --primaire: #5cc4ae;
+    --primaire-texte: #0c1513;
+    --primaire-doux: #1d3a34;
+    --accent: #f2c14e;
+    --ok: #6fcf97;
+    --ok-doux: #1b3326;
+    --attention: #f2a654;
+    --attention-doux: #3a2a16;
+    --danger: #ff7b6b;
+    --danger-doux: #3d1f1b;
+    --ombre: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='sombre'] {
+  --fond: #121615;
+  --surface: #1b211f;
+  --surface-2: #242b29;
+  --bordure: #2f3734;
+  --texte: #ecefed;
+  --texte-doux: #a3ada9;
+  --primaire: #5cc4ae;
+  --primaire-texte: #0c1513;
+  --primaire-doux: #1d3a34;
+  --accent: #f2c14e;
+  --ok: #6fcf97;
+  --ok-doux: #1b3326;
+  --attention: #f2a654;
+  --attention-doux: #3a2a16;
+  --danger: #ff7b6b;
+  --danger-doux: #3d1f1b;
+  --ombre: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  background: var(--fond);
+  color: var(--texte);
+  font-family: var(--police);
+  font-size: 16px;
+  line-height: 1.45;
+  overscroll-behavior-y: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 3px solid var(--primaire);
+  outline-offset: 2px;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+.chiffres {
+  font-family: var(--chiffres);
+  font-variant-numeric: tabular-nums;
+}
+
+.doux {
+  color: var(--texte-doux);
+}
+
+.negatif {
+  color: var(--danger);
+}
+
+.section-titre {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--texte-doux);
+  margin: var(--esp-5) var(--esp-1) var(--esp-2);
+}
+
+.pile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--esp-3);
+}
+
+.ligne {
+  display: flex;
+  align-items: center;
+  gap: var(--esp-3);
+}
+
+.espace {
+  flex: 1;
+}
+
+.visuellement-cache {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Champs de formulaire communs */
+.champ {
+  display: flex;
+  flex-direction: column;
+  gap: var(--esp-1);
+}
+.champ > span {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--texte-doux);
+}
+.champ input,
+.champ select,
+.champ textarea {
+  min-height: var(--tactile);
+  padding: 0 var(--esp-3);
+  border: 1.5px solid var(--bordure);
+  border-radius: var(--rayon-petit);
+  background: var(--surface);
+  font-size: 1rem;
+}
+.champ textarea {
+  padding: var(--esp-3);
+  min-height: 80px;
+}
+.champ input:focus,
+.champ select:focus,
+.champ textarea:focus {
+  border-color: var(--primaire);
+  outline: none;
+}
+.case {
+  display: flex;
+  align-items: center;
+  gap: var(--esp-3);
+  min-height: var(--tactile);
+}
+.case input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--primaire);
+}

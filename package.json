@@ -1,0 +1,37 @@
+{
+  "name": "outil-orga",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Outil d'organisation personnel — module Compta",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "import-excel": "tsx tools/import-excel/importer.ts"
+  },
+  "dependencies": {
+    "dexie": "^4.4.7"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@tsconfig/svelte": "^5.0.8",
+    "@types/node": "^26.6.6",
+    "fflate": "^0.8.3",
+    "svelte": "^5.57.3",
+    "svelte-check": "^4.7.7",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.5",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.0.5",
+    "workbox-build": "^7.4.1",
+    "workbox-precaching": "^7.4.1",
+    "workbox-window": "^7.4.1"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}

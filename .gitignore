@@ -1,0 +1,8 @@
+node_modules/
+dist/
+# Données personnelles : jamais dans le dépôt
+donnees-privees/
+*.xlsx
+
+# Réglages locaux de l outil de développement
+.claude/
