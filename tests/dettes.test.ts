@@ -34,6 +34,18 @@ describe('dettes', () => {
     expect(e.progression).toBeCloseTo(0.2);
   });
 
+  it('dette sans remboursement prévu : dans le total, hors date de fin et hors simulation', () => {
+    const d = donneesVides();
+    const papa = dette({ creancier: 'Papa', montantInitial: 200000, enAttente: true });
+    d.dettes.push(dette({ montantInitial: 30000, mensualite: 10000, taux: 0 }), papa);
+    const b = bilanDettes(d, AUJ);
+    expect(b.total).toBe(230000);
+    expect(b.totalEnAttente).toBe(200000);
+    expect(b.tauxManquants).toHaveLength(0);
+    expect(etatDette(d, papa, AUJ).fin).toBeNull();
+    expect(simulerTout(d, 0, AUJ).fin).toBe('2027-01');
+  });
+
   it('simulation : payer plus raccourcit la durée', () => {
     const d = donneesVides();
     const x = dette({ montantInitial: 100000, mensualite: 10000 });

@@ -181,6 +181,29 @@ export function resumeMois(d: DonneesCompta, id: MoisId, aujourdhui: DateISO): R
   };
 }
 
+// ————————————————————————————————————————————— Reste à dépenser (accueil)
+
+export interface ResteADepenser {
+  /** Reste réel − prélèvements (charges et crédits) pas encore payés ce mois-ci. */
+  montant: Cents;
+  prelevementsAVenir: Cents;
+  /** Revenus prévus mais pas encore reçus : ils ne sont pas comptés dans le montant. */
+  aRecevoir: Cents;
+}
+
+export function resteADepenser(r: ResumeMois): ResteADepenser {
+  const prelevementsAVenir = somme(
+    r.lignes
+      .filter((l) => (l.poste.nature === 'charge' || l.poste.nature === 'credit') && l.prevu != null)
+      .map((l) => Math.max((l.prevu as number) - l.reel, 0)),
+  );
+  return {
+    montant: (r.resteReel ?? 0) - prelevementsAVenir,
+    prelevementsAVenir,
+    aRecevoir: r.revenusPrevus - r.revenusRecus,
+  };
+}
+
 // ————————————————————————————————————————————— Période et cumul
 
 /** Premier mois connu : le plus ancien début de poste, revenu ou opération. */

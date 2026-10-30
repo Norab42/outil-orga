@@ -156,7 +156,7 @@ export function convertirOngletCompta(g: Grille, options: OptionsImport): { donn
     const m = montant(g, `B${l}`);
     d.dettes.push({
       id: nouvelId(), creancier: nom, montantInitial: m?.cents ?? null, mensualite: null,
-      taux: null, incertain: m?.incertain ?? false, ordre: d.dettes.length,
+      taux: null, incertain: m?.incertain ?? false, enAttente: false, ordre: d.dettes.length,
     });
     if (m?.incertain) dire('incertain', `${nom} : montant « ${m.brut} » importé comme montant incertain de ${eur(m.cents)}.`);
     else if (!m) dire('vide', `${nom} : aucun montant dû dans l'Excel (B${l}). À renseigner dans « Mes dettes ».`);
@@ -244,7 +244,7 @@ export function convertirOngletCompta(g: Grille, options: OptionsImport): { donn
     } else if (memes.length === 0 && p.montant != null) {
       const nouvelle = {
         id: nouvelId(), creancier: p.libelle, montantInitial: null, mensualite: null,
-        taux: null, incertain: false, ordre: d.dettes.length,
+        taux: null, incertain: false, enAttente: false, ordre: d.dettes.length,
       };
       d.dettes.push(nouvelle);
       p.detteId = nouvelle.id;

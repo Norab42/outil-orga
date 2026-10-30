@@ -25,6 +25,7 @@
     cadenas: 'M6 11h12v10H6zM8 11V7a4 4 0 0 1 8 0v4',
     info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.5',
     revenu: 'M12 19V5M5 12l7-7 7 7',
+    poignee: 'M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01',
     euro: 'M18 6.5A7 7 0 1 0 18 17.5M4 10h10M4 14h10',
   } as const;
   export type NomIcone = keyof typeof CHEMINS;

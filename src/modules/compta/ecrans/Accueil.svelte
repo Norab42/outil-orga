@@ -14,12 +14,13 @@
   import { payer, supprimerOperation } from '../actions';
   import { formatEuros } from '../../../core/money';
   import { ajouterMois, dateLisible, moisDeDate, nomMois } from '../../../core/dates';
-  import { enveloppesTenues, prochainesEcheances, resumeMois, type Echeance } from '../../../core/compta/calculs';
+  import { enveloppesTenues, prochainesEcheances, resteADepenser, resumeMois, type Echeance } from '../../../core/compta/calculs';
   import { bilanDettes, simulerTout } from '../../../core/compta/dettes';
 
   let mois = $derived(moisDeDate(etat.aujourdhui));
   let d = $derived(etat.compta!);
   let resume = $derived(resumeMois(d, mois, etat.aujourdhui));
+  let reste = $derived(resteADepenser(resume));
   let enveloppes = $derived(resume.lignes.filter((l) => l.poste.nature === 'enveloppe' && !l.horsPrevu));
   let horsCadre = $derived(resume.lignes.filter((l) => l.poste.nature === 'horsCadre' && l.reel > 0));
   let echeances = $derived(prochainesEcheances(d, etat.aujourdhui, 15).slice(0, 5));
@@ -67,18 +68,17 @@
   </div>
 {/each}
 
-<div class="restes">
-  <Carte onclick={() => aller(`/mois/${mois}`)} label="Voir mon mois">
-    <p class="etiquette">Reste prévu</p>
-    <Montant cents={resume.restePrevu} taille="grand" />
-    <p class="petit doux">{formatEuros(resume.revenusPrevus)} − {formatEuros(resume.depensesPrevues)}</p>
-  </Carte>
-  <Carte onclick={() => aller(`/mois/${mois}`)} label="Voir mon mois">
-    <p class="etiquette">Reste réel</p>
-    <Montant cents={resume.resteReel} taille="grand" />
-    <p class="petit doux">{formatEuros(resume.revenusRecus)} reçus − {formatEuros(resume.depensesReelles)}</p>
-  </Carte>
-</div>
+<Carte onclick={() => aller(`/mois/${mois}`)} label="Voir le détail de mon mois">
+  <p class="etiquette">Il me reste à dépenser</p>
+  <Montant cents={reste.montant} taille="geant" />
+  <p class="petit doux">
+    {formatEuros(resume.revenusRecus)} reçus − {formatEuros(resume.depensesReelles)} dépensés
+    {#if reste.prelevementsAVenir > 0}− {formatEuros(reste.prelevementsAVenir)} de prélèvements à venir{/if}
+  </p>
+  {#if reste.aRecevoir > 0}
+    <p class="petit doux">+ {formatEuros(reste.aRecevoir)} encore à recevoir (pas compté)</p>
+  {/if}
+</Carte>
 
 <h2 class="section-titre">Enveloppes</h2>
 <Carte>
@@ -142,6 +142,9 @@
         </div>
       {/if}
     </div>
+    {#if dettes.totalEnAttente > 0}
+      <p class="petit doux">dont {formatEuros(dettes.totalEnAttente)} sans remboursement prévu</p>
+    {/if}
     {#if dettes.aRenseigner.length}
       <p class="petit doux">{dettes.aRenseigner.length} montant(s) à renseigner</p>
     {/if}
@@ -166,11 +169,6 @@
 </div>
 
 <style>
-  .restes {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--esp-3);
-  }
   .etiquette {
     margin: 0 0 var(--esp-1);
     font-size: 0.85rem;
@@ -231,10 +229,5 @@
     bottom: calc(84px + env(safe-area-inset-bottom));
     z-index: 20;
     filter: drop-shadow(0 6px 16px rgb(0 0 0 / 0.25));
-  }
-  @media (max-width: 360px) {
-    .restes {
-      grid-template-columns: 1fr;
-    }
   }
 </style>

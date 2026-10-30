@@ -98,6 +98,9 @@ export interface Dette {
   /** Taux annuel en %, null = inconnu (à demander, jamais deviné). */
   taux: number | null;
   incertain: boolean;
+  /** Pas encore de remboursement prévu (ex. prêt familial) : comptée dans le total, pas dans les dates de fin. */
+  enAttente?: boolean;
+  /** Position choisie par l'utilisateur dans la liste (glisser-déposer). */
   ordre: number;
 }
 

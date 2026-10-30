@@ -13,6 +13,8 @@ export interface EtatDette {
   fin: MoisId | null;
   nbMois: number | null;
   solde: boolean;
+  /** Dette sans échéancier : ni mensualité, ni date de fin. */
+  enAttente: boolean;
   /** Part déjà remboursée, de 0 à 1. */
   progression: number | null;
 }
@@ -49,9 +51,10 @@ export function etatDette(d: DonneesCompta, dette: Dette, aujourdhui: DateISO, e
   const mois = moisDeDate(aujourdhui);
   const rembourse = rembourseDette(d, dette.id);
   const restant = dette.montantInitial == null ? null : Math.max(dette.montantInitial - rembourse, 0);
-  const base = mensualiteDette(d, dette, mois);
-  const mensualite = base == null && enPlus <= 0 ? null : (base ?? 0) + enPlus;
-  const nbMois = restant == null ? null : moisRestants(restant, mensualite);
+  const enAttente = !!dette.enAttente && restant !== 0;
+  const base = enAttente ? null : mensualiteDette(d, dette, mois);
+  const mensualite = enAttente || (base == null && enPlus <= 0) ? null : (base ?? 0) + enPlus;
+  const nbMois = restant == null || enAttente ? null : moisRestants(restant, mensualite);
   return {
     dette,
     restant,
@@ -60,6 +63,7 @@ export function etatDette(d: DonneesCompta, dette: Dette, aujourdhui: DateISO, e
     nbMois,
     fin: restant === 0 ? null : moisDeFin(mois, nbMois),
     solde: restant === 0,
+    enAttente,
     progression:
       dette.montantInitial && dette.montantInitial > 0
         ? Math.min(rembourse / dette.montantInitial, 1)
@@ -78,11 +82,16 @@ export interface BilanDettes {
   ordreConseille: EtatDette[];
   /** Dettes en cours sans taux : on demande, on ne devine pas. */
   tauxManquants: Dette[];
+  /** Dettes sans échéancier, et leur part du total (hors dates de fin et simulation). */
+  enAttente: EtatDette[];
+  totalEnAttente: Cents;
 }
 
 export function bilanDettes(d: DonneesCompta, aujourdhui: DateISO): BilanDettes {
   const etats = [...d.dettes].sort((a, b) => a.ordre - b.ordre).map((x) => etatDette(d, x, aujourdhui));
-  const enCours = etats.filter((e) => !e.solde);
+  // Seules les dettes avec un remboursement prévu entrent dans le calcul des dates de fin.
+  const enCours = etats.filter((e) => !e.solde && !e.enAttente);
+  const enAttente = etats.filter((e) => e.enAttente);
   return {
     etats,
     total: somme(etats.map((e) => e.restant)),
@@ -92,6 +101,8 @@ export function bilanDettes(d: DonneesCompta, aujourdhui: DateISO): BilanDettes 
       .filter((e) => e.dette.taux != null)
       .sort((a, b) => (b.dette.taux ?? 0) - (a.dette.taux ?? 0)),
     tauxManquants: enCours.filter((e) => e.dette.taux == null).map((e) => e.dette),
+    enAttente,
+    totalEnAttente: somme(enAttente.map((e) => e.restant)),
   };
 }
 
@@ -109,7 +120,8 @@ export function simulerDette(d: DonneesCompta, dette: Dette, enPlus: Cents, aujo
 /**
  * Simulation sur l'ensemble des dettes : on paie les mensualités habituelles, et les X € en plus
  * vont à la dette la plus chère (puis à la suivante quand elle est soldée ; une mensualité libérée
- * s'ajoute aussi). Les dettes sans taux passent en dernier. Sans intérêts, comme le reste du calcul.
+ * s'ajoute aussi). Les dettes sans taux passent en dernier, celles sans échéancier sont ignorées.
+ * Sans intérêts, comme le reste du calcul.
  */
 export function simulerTout(d: DonneesCompta, enPlus: Cents, aujourdhui: DateISO): {
   fin: MoisId | null;
@@ -118,7 +130,7 @@ export function simulerTout(d: DonneesCompta, enPlus: Cents, aujourdhui: DateISO
 } {
   const mois = moisDeDate(aujourdhui);
   const bilan = bilanDettes(d, aujourdhui);
-  const ordre = [...bilan.ordreConseille, ...bilan.etats.filter((e) => !e.solde && e.dette.taux == null)];
+  const ordre = [...bilan.ordreConseille, ...bilan.etats.filter((e) => !e.solde && !e.enAttente && e.dette.taux == null)];
   const lignes = ordre
     .filter((e) => e.restant != null && e.restant > 0)
     .map((e) => ({ id: e.dette.id, reste: e.restant as number, mens: e.mensualite ?? 0 }));

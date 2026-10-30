@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  alerteSolde, etatJauge, lignesDuMois, prochainesEcheances, proposerReliquat, resumeMois,
+  alerteSolde, etatJauge, lignesDuMois, prochainesEcheances, proposerReliquat, resteADepenser, resumeMois,
   revenusDuMois, vueAnnee,
 } from '../src/core/compta/calculs';
 import { donneesVides } from '../src/core/compta/types';
@@ -97,6 +97,21 @@ describe('mois', () => {
     expect(r.nonClasse).toBe(1250);
     expect(r.horsCadre).toBe(800);
     expect(r.lignes.find((l) => l.poste.id === d.postes[0].id)!.paye).toBe(true);
+  });
+
+  it('reste à dépenser = reste réel − prélèvements pas encore payés', () => {
+    const d = casExcel();
+    d.revenus[0].recu = true;
+    const chargeA = d.postes.find((p) => p.libelle === 'Charge A')!;
+    d.operations.push(
+      { id: id(), date: '2026-10-02', montant: 30000, note: 'acompte', posteId: chargeA.id, creeLe: '' },
+      { id: id(), date: '2026-10-03', montant: 2000, note: '', posteId: null, creeLe: '' },
+    );
+    const r = resteADepenser(resumeMois(d, '2026-10', AUJ));
+    // Charges et crédits d'octobre : 60 000 + 5 427 + 7 252 (crédit F sans montant) ; 30 000 déjà payés sur Charge A.
+    expect(r.prelevementsAVenir).toBe(30000 + 5427 + 7252);
+    expect(r.montant).toBe(45000 - 32000 - r.prelevementsAVenir);
+    expect(r.aRecevoir).toBe(0);
   });
 
   it('écart et restant des enveloppes', () => {
