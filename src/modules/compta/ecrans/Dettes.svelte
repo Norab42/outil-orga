@@ -125,7 +125,7 @@
   <p class="etiquette">Total restant dû</p>
   <Montant cents={bilan.total} taille="geant" estime={bilan.estime} colorer={false} />
   <p class="petit">
-    {#if sansPlus.fin}Au rythme actuel : fini en <strong>{nomMois(sansPlus.fin)}</strong>{bilan.aRenseigner.length ? ' (dettes renseignées)' : ''}{:else if sansPlus.nbMois == null}Fin non calculable : il manque des mensualités ou des montants{/if}
+    {#if sansPlus.fin}Au rythme actuel : fini en <strong>{nomMois(sansPlus.fin)}</strong>{bilan.aRenseigner.length ? ' (dettes renseignées)' : ''}, si chaque mensualité terminée passe sur la dette suivante{:else if sansPlus.nbMois == null}Fin non calculable : il manque des mensualités ou des montants{/if}
     {#if bilan.totalEnAttente > 0}<br />dont {formatEuros(bilan.totalEnAttente)} sans remboursement prévu (hors date de fin){/if}
     {#if bilan.estime}<br />~ comprend un montant incertain{/if}
   </p>
@@ -203,7 +203,10 @@
         <div class="barre" role="progressbar" aria-valuenow={pct(e)} aria-valuemin="0" aria-valuemax="100" aria-label="{pct(e)} % remboursé">
           <div class="rempli" style="width: {pct(e)}%"></div>
         </div>
-        <p class="petit doux">{pct(e)} % remboursé · {formatEuros(e.rembourse)} sur {formatEuros(e.dette.montantInitial ?? 0)}</p>
+        <p class="petit doux">
+          {pct(e)} % remboursé · {formatEuros(e.rembourse)} sur {formatEuros(e.dette.montantInitial ?? 0)}
+          {#if e.interets > 0}<br />+ {formatEuros(e.interets)} d'intérêts payés{/if}
+        </p>
       {/if}
       {#if e.enAttente}
         <div class="details petit"><Badge icone="info">pas encore de remboursement prévu</Badge></div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bilanDettes, etatDette, moisRestants, simulerDette, simulerTout } from '../src/core/compta/dettes';
+import { bilanDettes, etatDette, moisRestants, simulerDette, simulerTout, tauxMensuel } from '../src/core/compta/dettes';
 import { donneesVides, type Dette } from '../src/core/compta/types';
 import { id, poste } from './fixtures';
 
@@ -46,6 +46,46 @@ describe('dettes', () => {
     expect(simulerTout(d, 0, AUJ).fin).toBe('2027-01');
   });
 
+  it('crédit rattaché qui commence le mois prochain : sa mensualité est reprise', () => {
+    const d = donneesVides();
+    const x = dette({ montantInitial: 100000 });
+    d.dettes.push(x);
+    d.postes.push(poste({ libelle: 'Crédit', nature: 'credit', montant: 8100, debut: '2026-12', detteId: x.id }));
+    expect(etatDette(d, x, AUJ).mensualite).toBe(8100);
+    // 1 000 € ÷ 81 € = 13 mensualités, la première en décembre.
+    expect(etatDette(d, x, AUJ).fin).toBe('2027-12');
+  });
+
+  it("intérêts : la mensualité paie d'abord les intérêts du mois (taux mensuel équivalent au TAEG)", () => {
+    expect(tauxMensuel(null)).toBe(0);
+    expect(tauxMensuel(12.68)).toBeCloseTo(0.01, 4);
+    const d = donneesVides();
+    const x = dette({ montantInitial: 102566, taux: 10.08 });
+    const p = poste({ libelle: 'Crédit', nature: 'credit', montant: 8429, detteId: x.id });
+    d.dettes.push(x);
+    d.postes.push(p);
+    d.operations.push({ id: id(), date: '2026-11-02', montant: 8429, note: '', posteId: p.id, creeLe: '' });
+    const e = etatDette(d, x, AUJ);
+    expect(e.interets).toBe(824); // 1 025,66 € × 0,803 %
+    expect(e.restant).toBe(102566 + 824 - 8429);
+    expect(e.rembourse).toBe(8429 - 824);
+  });
+
+  it('intérêts : la durée tient compte des intérêts, et une mensualité trop faible ne finit jamais', () => {
+    // 3 019,33 € à 23,52 %, 81 €/mois : 38 mois sans intérêts, 62 avec.
+    expect(moisRestants(301933, 8100)).toBe(38);
+    expect(moisRestants(301933, 8100, tauxMensuel(23.52))).toBe(62);
+    expect(moisRestants(301933, 5000, tauxMensuel(23.52))).toBeNull();
+  });
+
+  it('un remboursement hors prévisionnel va entièrement au capital', () => {
+    const d = donneesVides();
+    const x = dette({ montantInitial: 100000, taux: 20 });
+    d.dettes.push(x);
+    d.mouvementsDette.push({ id: id(), detteId: x.id, date: '2026-11-30', montant: 10000, origine: 'manuel', moisId: null });
+    expect(etatDette(d, x, AUJ).restant).toBe(90000);
+  });
+
   it('simulation : payer plus raccourcit la durée', () => {
     const d = donneesVides();
     const x = dette({ montantInitial: 100000, mensualite: 10000 });
@@ -82,8 +122,9 @@ describe('dettes', () => {
   it("simulation globale : l'argent en plus va à la plus chère, puis la mensualité libérée suit", () => {
     const d = donneesVides();
     d.dettes.push(
-      dette({ id: 'cher', montantInitial: 30000, mensualite: 10000, taux: 20 }),
-      dette({ id: 'pascher', montantInitial: 60000, mensualite: 10000, taux: 2 }),
+      // Taux quasi nuls : on teste l'ordre de remboursement, pas les intérêts.
+      dette({ id: 'cher', montantInitial: 30000, mensualite: 10000, taux: 0.002 }),
+      dette({ id: 'pascher', montantInitial: 60000, mensualite: 10000, taux: 0.001 }),
     );
     const sans = simulerTout(d, 0, AUJ);
     // la mensualité de « cher », soldée au mois 3, passe sur « pascher » : fini au mois 5
