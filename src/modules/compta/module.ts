@@ -6,12 +6,16 @@ import Dettes from './ecrans/Dettes.svelte';
 import Comptes from './ecrans/Comptes.svelte';
 import Annee from './ecrans/Annee.svelte';
 import Saisie from './ecrans/Saisie.svelte';
+import Tuile from './ecrans/Tuile.svelte';
+import { saisie } from './saisie.svelte';
 
 export const moduleCompta: ModuleApp = {
   id: 'compta',
   nom: 'Compta',
+  icone: 'euro',
+  accueil: '/compta',
   ecrans: {
-    '': Accueil,
+    compta: Accueil,
     mois: MonMois,
     previsionnel: Previsionnel,
     dettes: Dettes,
@@ -19,8 +23,10 @@ export const moduleCompta: ModuleApp = {
     annee: Annee,
   },
   global: Saisie,
+  tuile: Tuile,
+  raccourcis: [{ libelle: 'Dépense', icone: 'plus', faire: () => saisie.ouvrir() }],
   onglets: [
-    { chemin: '/', libelle: 'Accueil', icone: 'accueil' },
+    { chemin: '/compta', libelle: 'Ce mois-ci', icone: 'accueil' },
     { chemin: '/mois', libelle: 'Mon mois', icone: 'mois' },
     { chemin: '/dettes', libelle: 'Dettes', icone: 'dettes' },
   ],

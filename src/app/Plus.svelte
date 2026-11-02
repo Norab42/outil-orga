@@ -3,15 +3,17 @@
   import Carte from '../ui/kit/Carte.svelte';
   import Icone from '../ui/kit/Icone.svelte';
   import { MODULES } from './modules';
-  import { aller } from './routeur.svelte';
+  import { aller, segments } from './routeur.svelte';
 
-  const entrees = [
-    ...MODULES.flatMap((m) => m.menu),
+  // « Plus » d'un pôle : ses entrées de menu, puis les réglages communs.
+  let module = $derived(MODULES.find((m) => m.id === segments()[1]));
+  let entrees = $derived([
+    ...(module ? module.menu : MODULES.flatMap((m) => m.menu)),
     { chemin: '/reglages', libelle: 'Réglages', icone: 'reglages' as const, description: 'Sauvegarde, thème, rappels, code' },
-  ];
+  ]);
 </script>
 
-<EnTete titre="Plus" />
+<EnTete surtitre={module?.nom} titre="Plus" />
 <div class="pile">
   {#each entrees as e (e.chemin)}
     <Carte onclick={() => aller(e.chemin)} label={e.libelle}>

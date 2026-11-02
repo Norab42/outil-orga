@@ -11,22 +11,39 @@
   import Plus from './Plus.svelte';
   import Verrou from './Verrou.svelte';
   import ValidationImport from './ValidationImport.svelte';
+  import Hub from './Hub.svelte';
+  import { moduleDeSegment, type ModuleApp } from './modules';
   import { registerSW } from 'virtual:pwa-register';
 
   registerSW({ immediate: true });
 
-  // Écrans de tous les modules + écrans communs.
-  const ECRANS = Object.assign({}, ...MODULES.map((m) => m.ecrans), { plus: Plus, reglages: Reglages });
-  const ONGLETS = [
-    ...MODULES.flatMap((m) => m.onglets),
-    { chemin: '/plus', libelle: 'Plus', icone: 'menu' as const },
-  ];
-  const DANS_PLUS = new Set(['plus', 'reglages', ...MODULES.flatMap((m) => m.menu.map((e) => e.chemin.slice(1)))]);
+  // Écrans de tous les modules + accueil commun et écrans partagés.
+  const ECRANS = Object.assign({}, ...MODULES.map((m) => m.ecrans), { '': Hub, plus: Plus, reglages: Reglages });
 
-  let ecran = $derived(ECRANS[segments()[0] ?? ''] ?? ECRANS['']);
+  let ecran = $derived(ECRANS[segments()[0] ?? ''] ?? Hub);
+
+  // Pôle courant : celui de l'écran affiché ; les écrans partagés (Plus, Réglages) gardent le dernier pôle visité.
+  let dernierPole = $state<ModuleApp | undefined>(undefined);
+  let pole = $derived.by(() => {
+    const [s = '', module] = segments();
+    if (s === '') return undefined;
+    if (s === 'plus' && module) return MODULES.find((m) => m.id === module);
+    return moduleDeSegment(s) ?? dernierPole;
+  });
+  $effect(() => {
+    if (pole) dernierPole = pole;
+  });
+
+  let onglets = $derived(
+    pole ? [...pole.onglets, { chemin: `/plus/${pole.id}`, libelle: 'Plus', icone: 'menu' as const }] : [],
+  );
   let ongletActif = $derived.by(() => {
+    if (!pole) return '';
     const s = segments()[0] ?? '';
-    return DANS_PLUS.has(s) ? '/plus' : `/${s}`;
+    const dansPlus = s === 'plus' || s === 'reglages' || pole.menu.some((e) => e.chemin === `/${s}`);
+    if (dansPlus) return `/plus/${pole.id}`;
+    // Onglet dont le chemin commence l'adresse (« /mois » pour « /mois/2026-11 », « /afaire » pour un projet ouvert depuis l'accueil).
+    return pole.onglets.find((o) => o.chemin === `/${s}`)?.chemin ?? pole.onglets[0].chemin;
   });
 
   // Thème
@@ -54,7 +71,7 @@
     }
   });
 
-  let pret = $derived(etat.compta != null && etat.reglagesCharges);
+  let pret = $derived(etat.compta != null && etat.projets != null && etat.reglagesCharges);
   let demarre = $derived(
     etat.reglages.demarre || (etat.compta != null && (etat.compta.postes.length > 0 || etat.compta.comptes.length > 0)),
   );
@@ -69,21 +86,35 @@
 {:else if !demarre}
   <Demarrage />
 {:else}
-  {#key routeur.chemin.split('/')[1]}
-    {@const Ecran = ecran}
-    <main class="page">
-      <Ecran />
-    </main>
-  {/key}
-  <nav class="barre" aria-label="Navigation">
-    {#each ONGLETS as o (o.chemin)}
-      <a href="#{o.chemin}" class:actif={ongletActif === o.chemin} aria-current={ongletActif === o.chemin ? 'page' : undefined}
-        onclick={(e) => { e.preventDefault(); aller(o.chemin); }}>
-        <Icone nom={o.icone} />
-        <span>{o.libelle}</span>
+  <nav class="poles" aria-label="Pôles">
+    <a href="#/" class:actif={!pole && !segments()[0]} aria-current={!segments()[0] ? 'page' : undefined}
+      onclick={(e) => { e.preventDefault(); aller('/'); }}>
+      <Icone nom="accueil" taille={18} /><span>Accueil</span>
+    </a>
+    {#each MODULES as m (m.id)}
+      <a href="#{m.accueil}" class:actif={pole?.id === m.id} aria-current={pole?.id === m.id ? 'true' : undefined}
+        onclick={(e) => { e.preventDefault(); aller(m.accueil); }}>
+        <Icone nom={m.icone} taille={18} /><span>{m.nom}</span>
       </a>
     {/each}
   </nav>
+  {#key routeur.chemin.split('/')[1]}
+    {@const Ecran = ecran}
+    <main class="page" class:sans-barre={!pole}>
+      <Ecran />
+    </main>
+  {/key}
+  {#if pole}
+    <nav class="barre" aria-label="Navigation {pole.nom}" style="grid-template-columns: repeat({onglets.length}, 1fr)">
+      {#each onglets as o (o.chemin)}
+        <a href="#{o.chemin}" class:actif={ongletActif === o.chemin} aria-current={ongletActif === o.chemin ? 'page' : undefined}
+          onclick={(e) => { e.preventDefault(); aller(o.chemin); }}>
+          <Icone nom={o.icone} />
+          <span>{o.libelle}</span>
+        </a>
+      {/each}
+    </nav>
+  {/if}
   {#each MODULES as m (m.id)}
     {#if m.global}{@const G = m.global}<G />{/if}
   {/each}
@@ -95,7 +126,41 @@
   .page {
     max-width: 640px;
     margin: 0 auto;
-    padding: env(safe-area-inset-top) var(--esp-4) calc(96px + env(safe-area-inset-bottom));
+    padding: 0 var(--esp-4) calc(96px + env(safe-area-inset-bottom));
+  }
+  .page.sans-barre {
+    padding-bottom: calc(var(--esp-6) + env(safe-area-inset-bottom));
+  }
+  /* Pôles (accueil, compta, à faire) : bandeau en haut, comme les rubriques d'une appli de paris. */
+  .poles {
+    position: sticky;
+    top: 0;
+    z-index: 25;
+    display: flex;
+    gap: var(--esp-1);
+    max-width: 640px;
+    margin: 0 auto;
+    padding: calc(env(safe-area-inset-top) + var(--esp-2)) var(--esp-4) var(--esp-2);
+    background: color-mix(in srgb, var(--fond) 92%, transparent);
+    backdrop-filter: blur(12px);
+    overflow-x: auto;
+  }
+  .poles a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 0 var(--esp-3);
+    border-radius: 999px;
+    color: var(--texte-doux);
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .poles a.actif {
+    background: var(--texte);
+    color: var(--fond);
   }
   .barre {
     position: fixed;
@@ -104,7 +169,6 @@
     bottom: 0;
     z-index: 30;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
     background: color-mix(in srgb, var(--surface) 92%, transparent);
     backdrop-filter: blur(12px);
     border-top: 1px solid var(--bordure);

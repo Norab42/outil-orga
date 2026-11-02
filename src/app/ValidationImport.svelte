@@ -12,7 +12,13 @@
   let ouvert = $derived(importEnAttente.fichier != null);
   let f = $derived(importEnAttente.fichier);
   let c = $derived(f?.modules.compta);
-  let dejaDesDonnees = $derived(!!etat.compta && (etat.compta.postes.length > 0 || etat.compta.operations.length > 0));
+  let p = $derived(f?.modules.projets);
+  // Seuls les modules présents dans le fichier sont remplacés.
+  let ecrase = $derived([
+    ...(c && etat.compta && (etat.compta.postes.length > 0 || etat.compta.operations.length > 0) ? ['la compta'] : []),
+    ...(p && etat.projets && (etat.projets.projets.length > 0 || etat.projets.taches.length > 0) ? ['les projets et tâches'] : []),
+  ]);
+  let garde = $derived([...(!c ? ['la compta'] : []), ...(!p ? ['les projets et tâches'] : [])]);
 
   const TITRES: Record<TypeDecision, string> = {
     anomalie: "Anomalies de l'Excel (non reproduites)",
@@ -39,14 +45,19 @@
 </script>
 
 <Feuille ouvert={ouvert} titre={f?.rapport ? "Rapport d'import" : 'Restaurer une sauvegarde'} onfermer={() => importEnAttente.annuler()}>
-  {#if f && c}
+  {#if f && (c || p)}
     <div class="pile">
       <p class="doux">
-        {importEnAttente.nom} · {c.postes.length} postes, {c.operations.length} opérations, {c.dettes.length} dettes, {c.comptes.length} comptes.
+        {importEnAttente.nom}
+        {#if c}· {c.postes.length} postes, {c.operations.length} opérations, {c.dettes.length} dettes, {c.comptes.length} comptes{/if}
+        {#if p}· {p.projets.length} projets, {p.taches.length} tâches{/if}.
         {#if !f.rapport}Sauvegardé le {new Date(f.exporteLe).toLocaleDateString('fr-FR')}.{/if}
       </p>
-      {#if dejaDesDonnees}
-        <Carte ton="attention"><p>Attention : valider remplace toutes les données actuelles de l'appli.</p></Carte>
+      {#if ecrase.length}
+        <Carte ton="attention"><p>Attention : valider remplace {ecrase.join(' et ')} actuellement dans l'appli.</p></Carte>
+      {/if}
+      {#if garde.length && (etat.compta?.postes.length || etat.projets?.projets.length)}
+        <p class="doux">Ce fichier ne contient pas {garde.join(' ni ')} : ce qui est dans l'appli n'y est pas touché.</p>
       {/if}
       {#if f.rapport}
         <p>Relis les décisions prises par l'import. Rien n'est enregistré avant ta validation.</p>

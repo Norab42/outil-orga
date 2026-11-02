@@ -1,6 +1,24 @@
-# Compta — mon outil
+# Mon outil d'organisation
 
-Appli de budget personnelle, faite pour le téléphone. Elle remplace l'onglet COMPTA de l'Excel.
+Appli personnelle faite pour le téléphone, en **pôles** séparés (comme les rubriques d'une appli de paris) :
+un bandeau en haut passe de l'un à l'autre, et chaque pôle a sa propre barre du bas et son menu « Plus ».
+
+- **Accueil** : les raccourcis **+ Dépense** et **+ Idée**, les rappels, et un résumé de chaque pôle qui mène vers lui.
+- **Compta** : remplace l'onglet COMPTA de l'Excel (détail ci-dessous).
+- **À faire** : projets, sous-projets, listes et tâches, partagés entre toi et Claude (détail ci-dessous).
+
+## Pôle « À faire »
+
+- **Aujourd'hui** : le **Focus du jour** (3 tâches au plus, choisies par toi, rien d'automatique), la boîte de réception à trier, ce qui concerne Claude, puis **Mes pôles** (ventes, paris, poker, musique…), les **projets ponctuels** et les **listes**. Chaque projet montre sa couleur, son icône, sa jauge d'avancement et sa prochaine action.
+- **+ Idée** (sur tous les écrans du pôle, et sur l'accueil) : un champ, Entrée pour valider. Dans un projet, l'idée y est rangée ; sinon elle va dans la boîte de réception. Coller plusieurs lignes crée plusieurs tâches.
+- **À trier** : une tâche à la fois, en un tap : *ranger dans un projet*, *confier à Claude*, *un jour*, *supprimer*. « Annuler » après chaque action.
+- **Projet** : couleur, icône, objectif, jauge, statut (actif, en pause, idée, terminé), sous-projets (3 niveaux au plus, teinte plus claire que le parent), tâches groupées par statut, faites repliées, « Réordonner » par boutons. Une **liste** (achats, idées cadeaux…) met en avant le coût et le lien, avec le total estimé en bas, sans aucun lien avec la compta.
+- **Tâche** : statut, horizon (*maintenant*, *bientôt*, *un jour*), qui s'en occupe (*moi*, *Claude*, *les deux*) et la consigne pour Claude, sous-tâches (un niveau), et en « plus de détails » : note, échéance, coût, lien, durée.
+- **Plus → Avec Claude** : retours de Claude à relire, ses propositions à accepter ou refuser, les tâches qui lui sont confiées. Claude n'écrit jamais dans tes tâches : c'est toi qui acceptes, refuses et marques « fait ».
+- Au premier passage, **Bien démarrer** propose de créer d'un coup tes pôles et projets ponctuels ; tu décoches ce que tu ne veux pas.
+- Pas de retard en rouge, pas de points ni de séries : seulement l'avancement.
+
+## Pôle « Compta »
 
 - **Accueil « Ce mois-ci »** : reste prévu, reste réel, jauges des enveloppes, prochaines échéances, gros bouton « + Dépense ».
 - **Saisie en 3 gestes** : montant, poste, Valider. La date est celle du jour, la note est facultative.
@@ -35,6 +53,14 @@ L'hébergement est gratuit avec GitHub Pages.
 
 Chaque `git push` suivant republie l'appli automatiquement. Les tests tournent avant : si un calcul est cassé, rien n'est publié.
 
+### Mettre à jour sans perdre les données du téléphone
+
+1. **Avant la mise à jour, sauvegarde** : Plus → Réglages → **Sauvegarder (fichier JSON)**, et range le fichier hors du téléphone.
+2. Fais le `git push`. Au prochain lancement, l'appli se met à jour seule.
+3. La base du téléphone est migrée automatiquement : les nouvelles tables sont ajoutées, celles de la compta ne sont pas touchées.
+
+Une sauvegarde ne remplace que les pôles qu'elle contient : restaurer une ancienne sauvegarde de la compta ne touche pas à tes projets.
+
 ## 2. Installer l'appli sur le téléphone Android
 
 1. Ouvre l'adresse `https://TON-PSEUDO.github.io/outil-orga/` dans **Chrome**.
@@ -68,9 +94,9 @@ Il te reste ensuite à compléter dans l'appli :
 
 Les données vivent dans le téléphone. **Si tu perds le téléphone sans sauvegarde, tu perds tes comptes.**
 
-- **Sauvegarder** : Plus → Réglages → **Sauvegarder (fichier JSON)**. Range ce fichier hors du téléphone (Drive, mail à toi-même, ordinateur).
-- **Restaurer** : sur le nouveau téléphone, installe l'appli (section 2), puis touche **Importer mon fichier**, ou passe par Réglages → **Restaurer ou importer un fichier**. Toutes les données sont remplacées par celles du fichier, après confirmation.
-- **Export CSV** : Réglages → **Exporter les opérations (CSV)**. Le fichier s'ouvre directement dans Excel.
+- **Sauvegarder** : Plus → Réglages → **Sauvegarder (fichier JSON)**. Le fichier contient la compta et les projets. Range-le hors du téléphone (Drive, mail à toi-même, ordinateur).
+- **Restaurer** : sur le nouveau téléphone, installe l'appli (section 2), puis touche **Importer mon fichier**, ou passe par Réglages → **Restaurer ou importer un fichier**. Les pôles présents dans le fichier remplacent ceux de l'appli, après confirmation ; un pôle absent du fichier n'est pas touché.
+- **Export CSV** : Réglages → **Exporter les opérations (CSV)** et **Exporter les tâches (CSV)**. Les fichiers s'ouvrent directement dans Excel.
 - **Rappel** : l'appli te le signale quand la dernière sauvegarde a plus d'un mois, sur l'accueil et par notification si tu les as activées.
 
 ## 5. Rappels et verrouillage
@@ -100,11 +126,12 @@ npm run build     # version de production dans dist/
 | `src/core/` | Calculs purs, sans interface ni stockage, testés. Montants en **centimes entiers**. |
 | `src/storage/` | Base locale IndexedDB (Dexie), sauvegarde JSON et export CSV. Chaque module déclare ses tables dans `db.ts`. |
 | `src/ui/kit/` | Composants communs (Bouton, Carte, Jauge, Pastille, Feuille, Montant…) et thème clair/sombre (`tokens.css`). |
-| `src/modules/compta/` | Les écrans et les actions du module Compta. |
-| `src/app/` | Le cadre de l'appli : navigation, réglages, rappels, verrouillage, registre des modules (`modules.ts`). |
+| `src/modules/compta/` | Les écrans et les actions du pôle Compta. |
+| `src/modules/projets/` | Les écrans et les actions du pôle À faire ; ses calculs sont dans `src/core/projets/` (avancement, prochaine action, export et retour de Claude). |
+| `src/app/` | Le cadre de l'appli : accueil commun, navigation par pôles, réglages, rappels, verrouillage, registre des modules (`modules.ts`). |
 | `tools/import-excel/` | L'import de l'onglet COMPTA. |
 
-**Ajouter un module** :
-1. Déclarer ses tables dans `src/storage/db.ts`, puis monter la version.
-2. Créer `src/modules/<nom>/module.ts`, avec ses écrans, ses onglets et ses entrées de menu.
+**Ajouter un module (un pôle)** :
+1. Déclarer ses tables dans `SCHEMAS_MODULES` (`src/storage/db.ts`), puis ajouter une version à la fin de `VERSIONS`. Ne jamais modifier une version déjà publiée.
+2. Créer `src/modules/<nom>/module.ts`, avec ses écrans, son écran d'entrée, sa tuile pour l'accueil, ses raccourcis, ses onglets (3 au plus) et ses entrées de menu.
 3. L'ajouter à la liste `MODULES` dans `src/app/modules.ts`.

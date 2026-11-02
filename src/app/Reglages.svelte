@@ -9,7 +9,7 @@
   import { activerNotifications } from './rappels';
   import { empreinte } from './verrou';
   import { ecrireReglage, type Reglages } from '../storage/reglages';
-  import { exporterCsv, exporterJson } from '../storage/sauvegarde';
+  import { exporterCsv, exporterJson, exporterTachesCsv } from '../storage/sauvegarde';
   import { dateLisible, ecartJours } from '../core/dates';
 
   let fichier: HTMLInputElement | undefined = $state();
@@ -56,6 +56,7 @@
   <div class="pile">
     <Bouton pleine icone="sauvegarde" onclick={exporterJson}>Sauvegarder (fichier JSON)</Bouton>
     <Bouton variante="secondaire" pleine onclick={exporterCsv}>Exporter les opérations (CSV)</Bouton>
+    <Bouton variante="secondaire" pleine onclick={exporterTachesCsv}>Exporter les tâches (CSV)</Bouton>
     <Bouton variante="secondaire" pleine icone="importer" onclick={() => fichier?.click()}>Restaurer ou importer un fichier</Bouton>
   </div>
   {#if importEnAttente.erreur}<p class="negatif">{importEnAttente.erreur}</p>{/if}

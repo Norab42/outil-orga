@@ -30,6 +30,19 @@
   --esp-5: 24px;
   --esp-6: 32px;
   --tactile: 48px;
+  /* Palette des projets : toujours accompagnée d'une icône ou d'un nom, jamais seule. */
+  --projet-rouge: #d64545;
+  --projet-orange: #dd7a1f;
+  --projet-jaune: #c99a00;
+  --projet-vert: #3f8f3f;
+  --projet-menthe: #1f9b7f;
+  --projet-cyan: #1a8fb0;
+  --projet-bleu: #2f6fd6;
+  --projet-indigo: #5560c9;
+  --projet-violet: #9150c7;
+  --projet-rose: #d14d8f;
+  --projet-brun: #8d6748;
+  --projet-gris: #6b7472;
   --police: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
   --chiffres: ui-rounded, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color-scheme: light;
@@ -54,6 +67,18 @@
     --danger: #ff7b6b;
     --danger-doux: #3d1f1b;
     --ombre: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
+    --projet-rouge: #f07b7b;
+    --projet-orange: #f4a259;
+    --projet-jaune: #e9c43f;
+    --projet-vert: #7cc47c;
+    --projet-menthe: #5fd0b3;
+    --projet-cyan: #5cc2e0;
+    --projet-bleu: #7aa7f5;
+    --projet-indigo: #9aa2f0;
+    --projet-violet: #c497ec;
+    --projet-rose: #ef8fbe;
+    --projet-brun: #c4a183;
+    --projet-gris: #a3ada9;
     color-scheme: dark;
   }
 }
@@ -76,6 +101,18 @@
   --danger: #ff7b6b;
   --danger-doux: #3d1f1b;
   --ombre: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
+  --projet-rouge: #f07b7b;
+  --projet-orange: #f4a259;
+  --projet-jaune: #e9c43f;
+  --projet-vert: #7cc47c;
+  --projet-menthe: #5fd0b3;
+  --projet-cyan: #5cc2e0;
+  --projet-bleu: #7aa7f5;
+  --projet-indigo: #9aa2f0;
+  --projet-violet: #c497ec;
+  --projet-rose: #ef8fbe;
+  --projet-brun: #c4a183;
+  --projet-gris: #a3ada9;
   color-scheme: dark;
 }
 

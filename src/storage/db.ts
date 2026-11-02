@@ -21,7 +21,20 @@ export const SCHEMAS_MODULES = {
     poles: 'id',
     clotures: 'moisId',
   },
+  projets: {
+    projets: 'id, parentId',
+    taches: 'id, projetId, parentTacheId, statut, echeance',
+    focus: 'date',
+    proposesClaude: 'id, decision',
+    retoursClaude: 'id, tacheId',
+  },
 } as const;
+
+/** Modules présents dans chaque version de la base (une version publiée ne change plus). */
+const VERSIONS: NomModule[][] = [
+  ['app', 'compta'],
+  ['app', 'compta', 'projets'],
+];
 
 export type NomModule = keyof typeof SCHEMAS_MODULES;
 
@@ -29,18 +42,27 @@ export function nomTable(module: NomModule, table: string): string {
   return `${module}_${table}`;
 }
 
-function schemaComplet(): Record<string, string> {
+export function schemaDe(modules: NomModule[]): Record<string, string> {
   const s: Record<string, string> = {};
-  for (const [mod, tables] of Object.entries(SCHEMAS_MODULES)) {
-    for (const [t, index] of Object.entries(tables)) s[nomTable(mod as NomModule, t)] = index;
+  for (const mod of modules) {
+    for (const [t, index] of Object.entries(SCHEMAS_MODULES[mod])) s[nomTable(mod, t)] = index;
   }
   return s;
 }
 
 export const NOM_BASE = 'outil-orga';
 
-export const db = new Dexie(NOM_BASE);
-db.version(1).stores(schemaComplet());
+/**
+ * Ouvre la base et déclare chaque version. Monter de version ajoute des tables sans toucher
+ * aux autres : les données de la compta restent telles quelles.
+ */
+export function ouvrirBase(nom = NOM_BASE): Dexie {
+  const base = new Dexie(nom);
+  VERSIONS.forEach((modules, i) => base.version(i + 1).stores(schemaDe(modules)));
+  return base;
+}
+
+export const db = ouvrirBase();
 
 export function nouvelId(): string {
   return crypto.randomUUID();
