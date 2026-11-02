@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  alerteSolde, etatJauge, lignesDuMois, prochainesEcheances, proposerReliquat, resteADepenser, resumeMois,
+  alerteSolde, etatJauge, lignesDuMois, prochainesEcheances, proposerReliquat, resteADepenser, resumeMois, situationCourant, projectionCourant, moisCourant,
   revenusDuMois, vueAnnee,
 } from '../src/core/compta/calculs';
 import { donneesVides } from '../src/core/compta/types';
@@ -205,6 +205,56 @@ describe('échéances et alerte de solde', () => {
     expect(a?.echeance.poste.libelle).toBe('Charge B');
     d.comptes[0].solde = 300000;
     expect(alerteSolde(d, '2026-11-08', 7)).toBeNull();
+  });
+
+  it('compte le découvert autorisé et dit de combien on le dépasse', () => {
+    const d = casExcel();
+    d.comptes.push({ id: 'cc', nom: 'Compte courant', solde: -61700, dateSolde: '2026-11-08', courant: true, ordre: 0, decouvertAutorise: 40000 });
+    const s = situationCourant(d, '2026-11-08')!;
+    expect(s.solde).toBe(-61700);
+    expect(s.disponible).toBe(-21700);
+    // novembre : 600 + 54,27 + 72,52 + 170 € de prélèvements pas encore payés
+    expect(s.prelevementsAVenir).toBe(60000 + 5427 + 7252 + 17000);
+    expect(s.soldeApres).toBe(-61700 - 89679);
+    // 170 € avant la limite : le crédit F (170 €) passe tout juste, la charge B (54,27 €) ne passe plus
+    d.comptes[0].solde = -23000;
+    d.operations.push({ id: id(), date: '2026-11-08', montant: 60000, note: '', posteId: d.postes[0].id, creeLe: '' });
+    d.comptes[0].dateSolde = '2026-11-08';
+    expect(alerteSolde(d, '2026-11-08', 7)?.echeance.poste.libelle).toBe('Charge B');
+  });
+
+  it('projette le compte courant mois par mois à partir du solde réel', () => {
+    const d = casExcel();
+    d.comptes.push({ id: 'cc', nom: 'Compte courant', solde: -61700, dateSolde: '2026-11-08', courant: true, ordre: 0, decouvertAutorise: 40000 });
+    // novembre en cours : la charge A est payée, le salaire pas encore reçu
+    d.operations.push({ id: id(), date: '2026-11-03', montant: 60000, note: '', posteId: d.postes[0].id, creeLe: '' });
+    const [nov, dec] = projectionCourant(d, '2026-12', '2026-11-08')!;
+    // reste à venir : 950 € de salaire, B + C + F (296,79 €) et les enveloppes (300 €)
+    expect(nov).toMatchObject({ debut: -61700, revenus: 95000, depenses: 5427 + 7252 + 17000 + 30000 });
+    expect(dec).toMatchObject({ debut: nov.fin, revenus: 95000, depenses: 119679, fin: nov.fin + 95000 - 119679 });
+  });
+
+  it('suivi qui commence le mois prochain : ce mois-ci est déjà ce mois-là, il part du solde saisi', () => {
+    const d = casExcel();
+    d.exceptions = [];
+    d.revenus = [];
+    for (const p of d.postes) p.debut = '2026-11';
+    d.revenusModeles[0].debut = '2026-10';
+    d.comptes.push({ id: 'cc', nom: 'Compte courant', solde: -61700, dateSolde: '2026-10-30', courant: true, ordre: 0, decouvertAutorise: 40000 });
+    expect(moisCourant(d, '2026-10-30')).toBe('2026-11');
+    expect(moisCourant(d, '2026-12-02')).toBe('2026-12');
+    expect(resumeMois(d, '2026-11', '2026-10-30').etat).toBe('enCours');
+    const [nov] = projectionCourant(d, '2026-11', '2026-10-30')!;
+    expect(nov).toMatchObject({ moisId: '2026-11', debut: -61700, revenus: 95000, depenses: 119679, fin: -61700 + 95000 - 119679 });
+  });
+
+  it("un prélèvement reporté n'est plus une échéance du mois", () => {
+    const d = casExcel();
+    const a = d.postes[0];
+    d.exceptions.push({ id: id(), moisId: '2026-11', posteId: a.id, montant: 0, retire: false, reporte: true });
+    const l = lignesDuMois(d, '2026-11').find((x) => x.poste.id === a.id)!;
+    expect(l.reporte).toBe(true);
+    expect(prochainesEcheances(d, '2026-11-08', 10).map((e) => e.poste.libelle)).not.toContain('Charge A');
   });
 });
 

@@ -11,16 +11,19 @@
   import { aller } from '../../../app/routeur.svelte';
   import { rappelsActifs } from '../../../app/rappels';
   import { saisie } from '../saisie.svelte';
-  import { payer, supprimerOperation } from '../actions';
+  import { payer, reporterAuMoisSuivant, supprimerOperation } from '../actions';
   import { formatEuros } from '../../../core/money';
-  import { ajouterMois, dateLisible, moisDeDate, nomMois } from '../../../core/dates';
-  import { enveloppesTenues, prochainesEcheances, resteADepenser, resumeMois, type Echeance } from '../../../core/compta/calculs';
+  import { ajouterMois, dateLisible, nomMois } from '../../../core/dates';
+  import {
+    enveloppesTenues, moisCourant, prochainesEcheances, resteADepenser, resumeMois, situationCourant, type Echeance,
+  } from '../../../core/compta/calculs';
   import { bilanDettes, simulerTout } from '../../../core/compta/dettes';
 
-  let mois = $derived(moisDeDate(etat.aujourdhui));
   let d = $derived(etat.compta!);
+  let mois = $derived(moisCourant(d, etat.aujourdhui));
   let resume = $derived(resumeMois(d, mois, etat.aujourdhui));
   let reste = $derived(resteADepenser(resume));
+  let courant = $derived(situationCourant(d, etat.aujourdhui));
   let enveloppes = $derived(resume.lignes.filter((l) => l.poste.nature === 'enveloppe' && !l.horsPrevu));
   let horsCadre = $derived(resume.lignes.filter((l) => l.poste.nature === 'horsCadre' && l.reel > 0));
   let echeances = $derived(prochainesEcheances(d, etat.aujourdhui, 15).slice(0, 5));
@@ -42,6 +45,13 @@
     }
     const op = await payer(e.poste, e.moisId, e.montant);
     toast.afficher(`${e.poste.libelle} payé`, { libelle: 'Annuler', faire: () => supprimerOperation(op) });
+  }
+
+  async function reporter(e: Echeance) {
+    const ligne = resumeMois(d, e.moisId, etat.aujourdhui).lignes.find((l) => l.poste.id === e.poste.id);
+    if (!ligne || e.montant == null) return;
+    const annuler = await reporterAuMoisSuivant(e.poste, e.moisId, e.montant, ligne.reel);
+    toast.afficher(`${e.poste.libelle} reporté en ${nomMois(ajouterMois(e.moisId, 1), false)}`, { libelle: 'Annuler', faire: annuler });
   }
 
   function quand(e: Echeance) {
@@ -79,6 +89,43 @@
     <p class="petit doux">+ {formatEuros(reste.aRecevoir)} encore à recevoir (pas compté)</p>
   {/if}
 </Carte>
+
+<div class="courant">
+  <Carte ton={courant && courant.decouvert > 0 && courant.disponible < 0 ? 'danger' : 'normal'} onclick={() => aller('/comptes')} label="Voir le compte courant">
+    {#if courant}
+      <div class="ligne">
+        <div class="espace">
+          <p class="etiquette">Compte courant</p>
+          <Montant cents={courant.solde} taille="grand" />
+        </div>
+        {#if courant.decouvert > 0}
+          <div class="fin">
+            <span class="petit doux">découvert autorisé</span>
+            <strong>−{formatEuros(courant.decouvert)}</strong>
+          </div>
+        {/if}
+      </div>
+      {#if courant.decouvert > 0}
+        <p class="petit">
+          {#if courant.disponible < 0}
+            <strong>{formatEuros(-courant.disponible)} au-delà du découvert autorisé</strong>
+          {:else}
+            encore {formatEuros(courant.disponible)} avant la limite du découvert
+          {/if}
+        </p>
+      {/if}
+      {#if courant.prelevementsAVenir > 0}
+        <p class="petit doux">
+          Après les {formatEuros(courant.prelevementsAVenir)} de prélèvements à venir : {formatEuros(courant.soldeApres)}
+          {#if courant.decouvert > 0 && courant.disponibleApres < 0}({formatEuros(-courant.disponibleApres)} au-delà du découvert){/if}
+        </p>
+      {/if}
+    {:else}
+      <p class="etiquette">Compte courant</p>
+      <p class="petit doux">Renseigne son solde (et ton découvert autorisé) pour partir de ta situation réelle.</p>
+    {/if}
+  </Carte>
+</div>
 
 <h2 class="section-titre">Enveloppes</h2>
 <Carte>
@@ -124,6 +171,13 @@
       <Montant cents={e.montant} vide="—" />
       <Bouton variante="secondaire" onclick={() => marquerPaye(e)} label="Marquer {e.poste.libelle} comme payé">Payé</Bouton>
     </div>
+    {#if e.enRetard && e.montant}
+      <div class="report">
+        <Bouton variante="discret" onclick={() => reporter(e)} label="{e.poste.libelle} n'est pas passé : reporter le mois suivant">
+          Pas passé → reporter en {nomMois(ajouterMois(e.moisId, 1), false)}
+        </Bouton>
+      </div>
+    {/if}
   {/each}
 </Carte>
 
@@ -193,8 +247,17 @@
     gap: var(--esp-3);
     min-height: 60px;
   }
-  .echeance + .echeance {
+  .echeance + .echeance,
+  .report + .echeance {
     border-top: 1px solid var(--bordure);
+  }
+  .report {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: calc(-1 * var(--esp-2));
+  }
+  .courant {
+    margin-top: var(--esp-3);
   }
   .quand {
     width: 82px;

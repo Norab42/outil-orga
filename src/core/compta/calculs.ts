@@ -4,7 +4,7 @@ import {
   type DateISO, type MoisId,
 } from '../dates';
 import type {
-  DonneesCompta, Nature, Operation, Pole, PosteModele, Revenu, RevenuModele,
+  Compte, DonneesCompta, Nature, Operation, Pole, PosteModele, Revenu, RevenuModele,
 } from './types';
 
 // ————————————————————————————————————————————— Lignes du mois
@@ -13,7 +13,7 @@ export type EtatMois = 'aVenir' | 'enCours' | 'aClore' | 'clos';
 
 export function etatMois(d: DonneesCompta, id: MoisId, aujourdhui: DateISO): EtatMois {
   if (d.clotures.some((c) => c.moisId === id)) return 'clos';
-  const c = comparerMois(id, moisDeDate(aujourdhui));
+  const c = comparerMois(id, moisCourant(d, aujourdhui));
   return c > 0 ? 'aVenir' : c === 0 ? 'enCours' : 'aClore';
 }
 
@@ -43,6 +43,8 @@ export interface LigneCalculee {
   jauge: EtatJauge | null;
   /** Pour les charges et crédits : déjà payé ce mois-ci. */
   paye: boolean;
+  /** Pas passé ce mois-ci, reporté au mois suivant. */
+  reporte: boolean;
 }
 
 export function etatJauge(prevu: Cents | null, reel: Cents): { ratio: number | null; jauge: EtatJauge } {
@@ -89,6 +91,7 @@ export function lignesDuMois(d: DonneesCompta, id: MoisId): LigneCalculee[] {
       ratio: estEnveloppe ? ratio : null,
       jauge: estEnveloppe ? jauge : null,
       paye: !estEnveloppe && (prevu != null && prevu > 0 ? reel >= prevu : reel > 0),
+      reporte: actif && !!ex?.reporte,
     });
   }
   return lignes;
@@ -191,12 +194,17 @@ export interface ResteADepenser {
   aRecevoir: Cents;
 }
 
-export function resteADepenser(r: ResumeMois): ResteADepenser {
-  const prelevementsAVenir = somme(
-    r.lignes
+/** Charges et crédits du mois pas encore payés (ce qui doit encore sortir du compte). */
+export function prelevementsRestants(lignes: LigneCalculee[]): Cents {
+  return somme(
+    lignes
       .filter((l) => (l.poste.nature === 'charge' || l.poste.nature === 'credit') && l.prevu != null)
       .map((l) => Math.max((l.prevu as number) - l.reel, 0)),
   );
+}
+
+export function resteADepenser(r: ResumeMois): ResteADepenser {
+  const prelevementsAVenir = prelevementsRestants(r.lignes);
   return {
     montant: (r.resteReel ?? 0) - prelevementsAVenir,
     prelevementsAVenir,
@@ -205,6 +213,16 @@ export function resteADepenser(r: ResumeMois): ResteADepenser {
 }
 
 // ————————————————————————————————————————————— Période et cumul
+
+/**
+ * Le mois que l'appli traite comme « ce mois-ci » : le mois du jour, mais jamais avant le premier mois
+ * suivi (le 30 octobre, si le suivi commence en novembre, on est déjà en novembre).
+ */
+export function moisCourant(d: DonneesCompta, aujourdhui: DateISO): MoisId {
+  const reel = moisDeDate(aujourdhui);
+  const premier = premierMois(d, aujourdhui);
+  return premier > reel ? premier : reel;
+}
 
 /** Premier mois connu : le plus ancien début de poste, revenu ou opération. */
 export function premierMois(d: DonneesCompta, aujourdhui: DateISO): MoisId {
@@ -273,12 +291,12 @@ export interface Echeance {
 
 /** Charges et crédits pas encore payés : en retard dans le mois en cours, puis à venir sur `horizon` jours. */
 export function prochainesEcheances(d: DonneesCompta, aujourdhui: DateISO, horizon = 31): Echeance[] {
-  const mois = moisDeDate(aujourdhui);
+  const mois = moisCourant(d, aujourdhui);
   const res: Echeance[] = [];
   for (const id of [mois, ajouterMois(mois, 1)]) {
     for (const l of lignesDuMois(d, id)) {
       if (l.poste.nature !== 'charge' && l.poste.nature !== 'credit') continue;
-      if (l.horsPrevu || l.paye || l.poste.jour == null) continue;
+      if (l.horsPrevu || l.paye || l.reporte || l.poste.jour == null) continue;
       const date = dateEcheance(id, l.poste.jour);
       const dansJours = ecartJours(aujourdhui, date);
       if (dansJours > horizon) continue;
@@ -288,25 +306,89 @@ export function prochainesEcheances(d: DonneesCompta, aujourdhui: DateISO, horiz
   return res.sort((a, b) => a.date.localeCompare(b.date));
 }
 
+export interface SituationCourant {
+  compte: Compte;
+  /** Solde saisi, moins les dépenses notées depuis la date du solde. */
+  solde: Cents;
+  /** Découvert autorisé, en positif (0 = aucun). */
+  decouvert: Cents;
+  /** Ce qui peut encore sortir avant la limite du découvert ; négatif = déjà au-delà. */
+  disponible: Cents;
+  /** Prélèvements du mois en cours pas encore passés. */
+  prelevementsAVenir: Cents;
+  /** Solde une fois ces prélèvements passés (sans les revenus à venir). */
+  soldeApres: Cents;
+  disponibleApres: Cents;
+}
+
+/** Le compte courant tel qu'il est vraiment : le solde réel, le découvert autorisé et ce qui va encore sortir. */
+export function situationCourant(d: DonneesCompta, aujourdhui: DateISO): SituationCourant | null {
+  const compte = d.comptes.find((c) => c.courant);
+  if (!compte || compte.solde == null) return null;
+  // Les dépenses notées depuis la date du solde ont déjà quitté le compte.
+  const depuis = compte.dateSolde ?? aujourdhui;
+  const sorties = somme(d.operations.filter((o) => o.date > depuis).map((o) => o.montant));
+  const solde = compte.solde - sorties;
+  const decouvert = compte.decouvertAutorise ?? 0;
+  const prelevementsAVenir = prelevementsRestants(lignesDuMois(d, moisCourant(d, aujourdhui)));
+  const soldeApres = solde - prelevementsAVenir;
+  return {
+    compte, solde, decouvert, disponible: solde + decouvert,
+    prelevementsAVenir, soldeApres, disponibleApres: soldeApres + decouvert,
+  };
+}
+
+export interface ProjectionMois {
+  moisId: MoisId;
+  debut: Cents;
+  revenus: Cents;
+  depenses: Cents;
+  fin: Cents;
+}
+
+/**
+ * Solde prévisionnel du compte courant mois par mois, en partant du solde réel saisi. Le mois en cours
+ * ne compte que ce qui reste à venir (revenus pas encore reçus, prélèvements pas passés, budgets pas
+ * dépensés) ; les mois suivants comptent tout le prévu.
+ */
+export function projectionCourant(d: DonneesCompta, jusqua: MoisId, aujourdhui: DateISO): ProjectionMois[] | null {
+  const s = situationCourant(d, aujourdhui);
+  if (!s) return null;
+  const mois = moisCourant(d, aujourdhui);
+  const enCours = resumeMois(d, mois, aujourdhui);
+  const enveloppesRestantes = somme(
+    enCours.lignes
+      .filter((l) => (l.poste.nature === 'enveloppe' || l.poste.nature === 'horsCadre') && !l.horsPrevu && l.restant != null)
+      .map((l) => Math.max(l.restant as number, 0)),
+  );
+  let solde = s.solde;
+  return plageMois(mois, jusqua).map((id, i) => {
+    const r = i === 0 ? null : resumeMois(d, id, aujourdhui);
+    const revenus = r ? r.revenusPrevus : enCours.revenusPrevus - enCours.revenusRecus;
+    const depenses = r ? r.depensesPrevues : s.prelevementsAVenir + enveloppesRestantes;
+    const p = { moisId: id, debut: solde, revenus, depenses, fin: solde + revenus - depenses };
+    solde = p.fin;
+    return p;
+  });
+}
+
 export interface AlerteSolde {
   /** Première échéance que le solde ne couvre plus. */
   echeance: Echeance;
   besoin: Cents;
   solde: Cents;
+  /** Solde + découvert autorisé. */
+  disponible: Cents;
 }
 
-/** Alerte quand une échéance approche (sous `jours` jours) et que le compte courant ne suffit pas. */
+/** Alerte quand une échéance approche (sous `jours` jours) et que le compte courant, découvert compris, ne suffit pas. */
 export function alerteSolde(d: DonneesCompta, aujourdhui: DateISO, jours = 7): AlerteSolde | null {
-  const courant = d.comptes.find((c) => c.courant);
-  if (!courant || courant.solde == null) return null;
-  // Les dépenses notées depuis la date du solde ont déjà quitté le compte.
-  const depuis = courant.dateSolde ?? aujourdhui;
-  const sorties = somme(d.operations.filter((o) => o.date > depuis).map((o) => o.montant));
-  const solde = courant.solde - sorties;
+  const s = situationCourant(d, aujourdhui);
+  if (!s) return null;
   let besoin = 0;
   for (const e of prochainesEcheances(d, aujourdhui, jours)) {
     besoin += e.montant ?? 0;
-    if (besoin > solde) return { echeance: e, besoin, solde };
+    if (besoin > s.disponible) return { echeance: e, besoin, solde: s.solde, disponible: s.disponible };
   }
   return null;
 }

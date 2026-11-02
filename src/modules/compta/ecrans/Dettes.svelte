@@ -31,7 +31,7 @@
   function ouvrir(x: Dette | null) {
     edite = x
       ? { ...x }
-      : { id: '', creancier: '', montantInitial: null, mensualite: null, taux: null, incertain: false, enAttente: false, ordre: Math.max(-1, ...d.dettes.map((x) => x.ordre)) + 1 };
+      : { id: '', creancier: '', montantInitial: null, mensualite: null, taux: null, incertain: false, enAttente: false, personnelle: false, ordre: Math.max(-1, ...d.dettes.map((x) => x.ordre)) + 1 };
     tauxTexte = x?.taux == null ? '' : String(x.taux).replace('.', ',');
     remboursement = null;
     ouvert = true;
@@ -128,6 +128,7 @@
     {#if sansPlus.fin}Au rythme actuel : fini en <strong>{nomMois(sansPlus.fin)}</strong>{bilan.aRenseigner.length ? ' (dettes renseignées)' : ''}, si chaque mensualité terminée passe sur la dette suivante{:else if sansPlus.nbMois == null}Fin non calculable : il manque des mensualités ou des montants{/if}
     {#if bilan.totalEnAttente > 0}<br />dont {formatEuros(bilan.totalEnAttente)} sans remboursement prévu (hors date de fin){/if}
     {#if bilan.estime}<br />~ comprend un montant incertain{/if}
+    {#if bilan.personnelles.length}<br />hors dettes personnelles ({formatEuros(bilan.totalPersonnel)}){/if}
   </p>
 </Carte>
 
@@ -226,14 +227,37 @@
   <Bouton variante="secondaire" icone="plus" onclick={() => ouvrir(null)}>Créancier</Bouton>
 </div>
 
+{#if bilan.personnelles.length}
+  <h2 class="section-titre">Dettes personnelles</h2>
+  <p class="petit doux aide">Famille, amis : notées pour mémoire, hors de tous les calculs (total, dates de fin, solde).</p>
+  <Carte>
+    {#each bilan.personnelles as e (e.dette.id)}
+      <button class="rangee-perso" onclick={() => ouvrir(e.dette)} aria-label="Modifier {e.dette.creancier}">
+        <span class="espace">{e.dette.creancier}</span>
+        {#if e.solde}
+          <Badge ton="ok" icone="trophee">soldé</Badge>
+        {:else}
+          <Montant cents={e.restant} estime={e.dette.incertain} colorer={false} vide="à renseigner" />
+        {/if}
+      </button>
+    {/each}
+  </Carte>
+{/if}
+
 <Feuille bind:ouvert titre={edite?.id ? (edite?.creancier ?? '') : 'Nouveau créancier'}>
   {#if edite}
     <form class="pile" onsubmit={enregistrer}>
       <label class="champ"><span>Créancier</span><input bind:value={edite.creancier} required /></label>
       <ChampMontant bind:valeur={edite.montantInitial} libelle="Montant dû au départ du suivi" />
       <label class="case"><input type="checkbox" bind:checked={edite.incertain} /> Montant incertain (affiché « ~ »)</label>
+      <label class="case"><input type="checkbox" bind:checked={edite.personnelle} /> Dette personnelle (famille, amis)</label>
+      {#if edite.personnelle}
+        <p class="petit doux">
+          <Icone nom="info" taille={14} /> Gardée pour mémoire, mais comptée nulle part : ni dans le total, ni dans les dates de fin.
+        </p>
+      {/if}
       <label class="case"><input type="checkbox" bind:checked={edite.enAttente} /> Pas encore de remboursement prévu</label>
-      {#if edite.enAttente}
+      {#if edite.enAttente && !edite.personnelle}
         <p class="petit doux">
           <Icone nom="info" taille={14} /> Comptée dans le total dû, mais pas dans la date de fin ni dans « Et si je payais plus ? ». Décoche quand un remboursement est fixé.
         </p>
@@ -261,6 +285,21 @@
 </Feuille>
 
 <style>
+  .rangee-perso {
+    display: flex;
+    align-items: center;
+    gap: var(--esp-3);
+    width: 100%;
+    min-height: 52px;
+    border: 0;
+    background: none;
+    text-align: left;
+    font-weight: 600;
+    padding: 0;
+  }
+  .rangee-perso + .rangee-perso {
+    border-top: 1px solid var(--bordure);
+  }
   .etiquette {
     margin: 0 0 var(--esp-1);
     font-size: 0.85rem;

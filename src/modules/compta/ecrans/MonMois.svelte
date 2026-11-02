@@ -13,16 +13,19 @@
   import { saisie } from '../saisie.svelte';
   import * as act from '../actions';
   import { formatEuros, type Cents } from '../../../core/money';
-  import { ajouterMois, dateLisible, deMois, moisDeDate, nomMois, type MoisId } from '../../../core/dates';
+  import { ajouterMois, dateLisible, deMois, nomMois, type MoisId } from '../../../core/dates';
   import {
-    operationsDuMois, proposerReliquat, resumeMois, type LigneCalculee, type RevenuCalcule,
+    moisCourant, operationsDuMois, premierMois, projectionCourant, proposerReliquat, resumeMois, situationCourant, type LigneCalculee, type RevenuCalcule,
   } from '../../../core/compta/calculs';
   import {
     LIBELLE_NATURE, LIBELLE_TYPE_REVENU, type Nature, type TypeRevenu,
   } from '../../../core/compta/types';
 
-  let mois: MoisId = $derived(/^\d{4}-\d{2}$/.test(segments()[1] ?? '') ? segments()[1] : moisDeDate(etat.aujourdhui));
   let d = $derived(etat.compta!);
+  let enCours = $derived(moisCourant(d, etat.aujourdhui));
+  // Rien avant le premier mois suivi.
+  let premier = $derived(premierMois(d, etat.aujourdhui));
+  let mois: MoisId = $derived(/^\d{4}-\d{2}$/.test(segments()[1] ?? '') ? segments()[1] : enCours);
   let resume = $derived(resumeMois(d, mois, etat.aujourdhui));
   let ops = $derived(operationsDuMois(d, mois).sort((a, b) => b.date.localeCompare(a.date) || b.creeLe.localeCompare(a.creeLe)));
   let libellePoste = $derived(new Map(d.postes.map((p) => [p.id, p.libelle])));
@@ -30,23 +33,60 @@
   let groupes = $derived(
     NATURES.map((n) => ({ nature: n, lignes: resume.lignes.filter((l) => l.poste.nature === n) })).filter((g) => g.lignes.length),
   );
+  // Compte courant : du solde réel d'aujourd'hui jusqu'à ce mois (mois en cours ou à venir seulement).
+  let decouvert = $derived(situationCourant(d, etat.aujourdhui)?.decouvert ?? 0);
+  let projection = $derived(
+    mois >= enCours ? (projectionCourant(d, mois, etat.aujourdhui)?.at(-1) ?? null) : null,
+  );
   const ETATS = { aVenir: ['à venir', 'neutre'], enCours: ['en cours', 'primaire'], aClore: ['à clore', 'attention'], clos: ['clos', 'ok'] } as const;
 
   // ——— ligne du mois
+  const estEnveloppe = (l: LigneCalculee) => l.poste.nature === 'enveloppe' || l.poste.nature === 'horsCadre';
+  let jourDuMois = $derived(Number(etat.aujourdhui.slice(8, 10)));
+  /** Ce qu'on lit sous le libellé d'une charge ou d'un crédit, et son ton. */
+  function detailCharge(l: LigneCalculee): { texte: string; ton?: 'attention' } {
+    const derniere = ops.find((o) => o.posteId === l.poste.id);
+    if (l.horsPrevu) return { texte: `hors prévu · ${formatEuros(l.reel)} payé` };
+    if (l.paye) return { texte: derniere ? `payé le ${dateLisible(derniere.date)}` : 'payé' };
+    if (l.reporte) return { texte: `reporté en ${nomMois(ajouterMois(mois, 1), false)}`, ton: 'attention' };
+    const morceaux: string[] = [];
+    if (l.poste.jour) morceaux.push(`prélevé le ${l.poste.jour}`);
+    if (l.reel > 0) morceaux.push(`${formatEuros(l.reel)} déjà payé`);
+    if (l.corrige) morceaux.push('ajusté ce mois');
+    const enRetard = mois === enCours && l.poste.jour != null && l.poste.jour < jourDuMois;
+    if (enRetard) return { texte: `devait passer le ${l.poste.jour}`, ton: 'attention' };
+    return { texte: morceaux.join(' · ') || 'à payer' };
+  }
+  function payeDuGroupe(lignes: LigneCalculee[]): Cents {
+    return lignes.reduce((s, l) => s + l.reel, 0);
+  }
+
   let ligne = $state<LigneCalculee | null>(null);
   let ligneOuverte = $state(false);
-  let prevuSaisi = $state<Cents | null>(null);
+  /** Montant total du mois pour ce poste : sert à valider le paiement ou à changer le prévu. */
+  let montantSaisi = $state<Cents | null>(null);
   function ouvrirLigne(l: LigneCalculee) {
     ligne = l;
-    prevuSaisi = l.prevu;
+    montantSaisi = l.prevu;
     ligneOuverte = true;
   }
   async function enregistrerPrevu() {
     if (!ligne) return;
-    if (prevuSaisi === ligne.prevuModele) await act.retablirPrevu(mois, ligne.poste.id);
-    else await act.corrigerPrevu(mois, ligne.poste.id, prevuSaisi);
+    if (montantSaisi === ligne.prevuModele) await act.retablirPrevu(mois, ligne.poste.id);
+    else await act.corrigerPrevu(mois, ligne.poste.id, montantSaisi);
     ligneOuverte = false;
     toast.afficher(`Prévu ${deMois(mois)} corrigé (le modèle ne change pas)`);
+  }
+  async function annulerPaiement() {
+    if (!ligne) return;
+    const l = ligne;
+    const liste = ops.filter((o) => o.posteId === l.poste.id);
+    for (const o of liste) await act.supprimerOperation(o);
+    ligneOuverte = false;
+    toast.afficher(`Paiement de ${l.poste.libelle} annulé`, {
+      libelle: 'Annuler',
+      faire: async () => { for (const o of liste) await act.retablirOperation(o); },
+    });
   }
   async function retablir() {
     if (!ligne) return;
@@ -60,11 +100,21 @@
     ligneOuverte = false;
     toast.afficher(`${l.poste.libelle} retiré de ${nomMois(mois, false)}`, { libelle: 'Annuler', faire: () => act.retablirPrevu(mois, l.poste.id) });
   }
+  /** « Payé » au montant saisi (le prévu par défaut) : seul ce qui n'a pas déjà été payé est ajouté. */
   async function payerLigne() {
-    if (!ligne || ligne.prevu == null) return;
-    const op = await act.payer(ligne.poste, mois, ligne.prevu - ligne.reel);
+    if (!ligne || montantSaisi == null || montantSaisi <= ligne.reel) return;
+    const l = ligne;
+    const op = await act.payer(l.poste, mois, montantSaisi - l.reel);
     ligneOuverte = false;
-    toast.afficher(`${ligne.poste.libelle} payé`, { libelle: 'Annuler', faire: () => act.supprimerOperation(op) });
+    toast.afficher(`${l.poste.libelle} payé`, { libelle: 'Annuler', faire: () => act.supprimerOperation(op) });
+  }
+
+  async function reporterLigne() {
+    if (!ligne || ligne.prevu == null) return;
+    const l = ligne;
+    const annuler = await act.reporterAuMoisSuivant(l.poste, mois, l.prevu as number, l.reel);
+    ligneOuverte = false;
+    toast.afficher(`${l.poste.libelle} reporté en ${nomMois(ajouterMois(mois, 1), false)}`, { libelle: 'Annuler', faire: annuler });
   }
 
   // ——— revenus
@@ -122,14 +172,14 @@
 
 <EnTete surtitre="Mon mois" titre={nomMois(mois)}>
   {#snippet actions()}
-    <Bouton variante="secondaire" icone="gauche" label="Mois précédent" onclick={() => aller(`/mois/${ajouterMois(mois, -1)}`)} />
+    <Bouton variante="secondaire" icone="gauche" label="Mois précédent" disabled={mois <= premier} onclick={() => aller(`/mois/${ajouterMois(mois, -1)}`)} />
     <Bouton variante="secondaire" icone="droite" label="Mois suivant" onclick={() => aller(`/mois/${ajouterMois(mois, 1)}`)} />
   {/snippet}
 </EnTete>
 
 <div class="ligne etat">
   <Badge ton={ETATS[resume.etat][1]}>{ETATS[resume.etat][0]}</Badge>
-  {#if mois !== moisDeDate(etat.aujourdhui)}
+  {#if mois !== enCours}
     <button class="lien" onclick={() => aller('/mois')}>Revenir à ce mois-ci</button>
   {/if}
 </div>
@@ -144,6 +194,39 @@
     <Montant cents={resume.resteReel} taille="grand" vide="—" />
   </Carte>
 </div>
+
+{#if projection}
+  <div class="projection">
+    <Carte ton={decouvert > 0 && projection.fin < -decouvert ? 'danger' : 'normal'}>
+      <p class="etiquette">Compte courant (estimé)</p>
+      <div class="total sans-bord">
+        <span>{projection.moisId === enCours ? 'Solde actuel' : 'Début du mois'}</span>
+        <span class="espace"></span><Montant cents={projection.debut} />
+      </div>
+      {#if projection.revenus}
+        <div class="total sans-bord">
+          <span>+ {projection.moisId === enCours ? 'revenus encore à recevoir' : 'revenus prévus'}</span><span class="espace"></span><Montant cents={projection.revenus} />
+        </div>
+      {/if}
+      <div class="total sans-bord">
+        <span>− {projection.moisId === enCours ? 'ce qui doit encore sortir' : 'dépenses prévues'}</span>
+        <span class="espace"></span><Montant cents={-projection.depenses} />
+      </div>
+      <div class="total">
+        <strong>Fin du mois</strong><span class="espace"></span><Montant cents={projection.fin} taille="grand" />
+      </div>
+      {#if decouvert > 0}
+        <p class="petit doux">
+          {#if projection.fin < -decouvert}
+            {formatEuros(-projection.fin - decouvert)} au-delà du découvert autorisé (−{formatEuros(decouvert)})
+          {:else}
+            dans le découvert autorisé (−{formatEuros(decouvert)})
+          {/if}
+        </p>
+      {/if}
+    </Carte>
+  </div>
+{/if}
 
 <!-- Revenus -->
 <h2 class="section-titre">Revenus</h2>
@@ -177,28 +260,50 @@
 {#each groupes as g (g.nature)}
   <h2 class="section-titre">{LIBELLE_NATURE[g.nature]}</h2>
   <Carte>
-    <div class="entetes petit doux">
-      <span class="espace"></span><span class="col">prévu</span><span class="col">réel</span><span class="col">écart</span>
-    </div>
     {#each g.lignes as l (l.poste.id)}
-      <button class="rangee cible ligne-mois" onclick={() => ouvrirLigne(l)}>
-        <span class="nom espace">
-          {l.poste.libelle}
-          {#if l.corrige}<Badge ton="primaire">ce mois</Badge>{/if}
-          {#if l.horsPrevu}<Badge>hors prévu</Badge>{/if}
-          {#if l.paye}<Badge ton="ok" icone="ok">payé</Badge>{/if}
-        </span>
-        <span class="col"><Montant cents={l.prevu} vide="—" taille="petit" /></span>
-        <span class="col"><Montant cents={l.reel} taille="petit" colorer={false} /></span>
-        <span class="col">
-          {#if l.ecart == null || (l.jauge == null && l.reel === 0)}<span class="doux">—</span>{:else}
-            <span class="chiffres petit" class:negatif={l.ecart > 0} class:positif={l.ecart < 0}>{formatEuros(l.ecart, { signe: true })}</span>
-          {/if}
-        </span>
-      </button>
+      {#if estEnveloppe(l)}
+        {@const pourcent = l.prevu && l.prevu > 0 ? Math.min((l.reel / l.prevu) * 100, 100) : l.reel > 0 ? 100 : 0}
+        <button class="depense enveloppe {l.prevu == null ? 'neutre' : l.jauge}" onclick={() => ouvrirLigne(l)}>
+          <span class="tete">
+            <span class="titre">{l.poste.libelle}</span>
+            <Montant cents={l.prevu} vide="sans budget" />
+          </span>
+          <span class="barre" aria-hidden="true"><span class="rempli" style="width: {pourcent}%"></span></span>
+          <span class="detail">
+            {#if l.restant == null}
+              <span>{formatEuros(l.reel)} dépensés</span>
+            {:else if l.restant >= 0}
+              <span><strong class="chiffres">{formatEuros(l.restant)}</strong> restants</span>
+              <span class="chiffres">{formatEuros(l.reel)} dépensés</span>
+            {:else}
+              <span class="ecart"><strong class="chiffres">{formatEuros(-l.restant)}</strong> de trop</span>
+              <span class="chiffres">{formatEuros(l.reel)} dépensés</span>
+            {/if}
+          </span>
+        </button>
+      {:else}
+        {@const detail = detailCharge(l)}
+        {@const ecart = l.paye && l.prevu != null && l.reel !== l.prevu ? l.reel - l.prevu : 0}
+        <button class="depense" class:payee={l.paye} onclick={() => ouvrirLigne(l)}>
+          <span class="statut" class:paye={l.paye} class:reporte={l.reporte} aria-hidden="true">
+            {#if l.paye}<Icone nom="ok" taille={16} epaisseur={3} />{:else if l.reporte}<Icone nom="droite" taille={14} epaisseur={3} />{/if}
+          </span>
+          <span class="corps">
+            <span class="titre">{l.poste.libelle}</span>
+            <span class="detail" class:attention={detail.ton === 'attention'}>{detail.texte}</span>
+          </span>
+          <span class="montant-ligne">
+            <Montant cents={l.paye || l.horsPrevu ? l.reel : l.prevu} vide="—" colorer={false} />
+            {#if ecart}
+              <span class="chiffres ecart-pastille" class:plus={ecart > 0}>{formatEuros(ecart, { signe: true })}</span>
+            {/if}
+          </span>
+        </button>
+      {/if}
     {/each}
     <div class="total">
       <span>Total</span><span class="espace"></span>
+      <span class="doux petit">{formatEuros(payeDuGroupe(g.lignes))} {estEnveloppe(g.lignes[0]) ? 'dépensés' : 'payés'} sur</span>
       <Montant cents={resume.depensesPrevuesPar[g.nature]} />
     </div>
   </Carte>
@@ -273,24 +378,54 @@
 <!-- Feuilles -->
 <Feuille bind:ouvert={ligneOuverte} titre={ligne?.poste.libelle ?? ''}>
   {#if ligne}
+    {@const env = estEnveloppe(ligne)}
+    {@const aPayer = !env && !ligne.paye && !ligne.horsPrevu && !ligne.reporte}
+    {@const modifie = montantSaisi !== ligne.prevu}
     <div class="pile">
+      <div class="resume-ligne">
+        <div><span class="doux petit">Prévu</span><Montant cents={ligne.prevu} vide="—" /></div>
+        <div><span class="doux petit">{env ? 'Dépensé' : 'Payé'}</span><Montant cents={ligne.reel} colorer={false} /></div>
+        {#if ligne.prevu != null && ligne.reel > 0}
+          {@const e = ligne.reel - ligne.prevu}
+          <div>
+            <span class="doux petit">Écart</span>
+            <span class="chiffres ecart-valeur" class:negatif={e > 0} class:positif={e < 0}>{formatEuros(e, { signe: true })}</span>
+          </div>
+        {/if}
+      </div>
       <p class="doux petit">
         {LIBELLE_NATURE[ligne.poste.nature]} · modèle : {ligne.prevuModele == null ? 'sans montant' : formatEuros(ligne.prevuModele)}
-        · réel : {formatEuros(ligne.reel)} ({ligne.nbOperations} opération{ligne.nbOperations > 1 ? 's' : ''})
+        · {ligne.nbOperations} opération{ligne.nbOperations > 1 ? 's' : ''}
       </p>
-      {#if !ligne.horsPrevu}
-        <ChampMontant bind:valeur={prevuSaisi} libelle="Prévu pour {nomMois(mois)} seulement" />
-        <Bouton pleine onclick={enregistrerPrevu}>Enregistrer pour ce mois</Bouton>
-        {#if ligne.corrige}
-          <Bouton variante="secondaire" pleine onclick={retablir}>Revenir au montant du modèle</Bouton>
-        {/if}
+      {#if !ligne.horsPrevu && !ligne.paye}
+        <ChampMontant bind:valeur={montantSaisi} libelle={aPayer ? `Montant ${deMois(mois)}` : `Prévu pour ${nomMois(mois)} seulement`} />
+        {#if aPayer && ligne.reel > 0}<p class="doux petit">dont {formatEuros(ligne.reel)} déjà payé</p>{/if}
       {/if}
-      {#if (ligne.poste.nature === 'charge' || ligne.poste.nature === 'credit') && !ligne.paye && ligne.prevu}
-        <Bouton variante="secondaire" pleine icone="ok" onclick={payerLigne}>Payé ({formatEuros(ligne.prevu - ligne.reel)})</Bouton>
+      {#if aPayer}
+        <Bouton pleine grand icone="ok" disabled={montantSaisi == null || montantSaisi <= ligne.reel} onclick={payerLigne}>
+          Payé{montantSaisi != null && montantSaisi > ligne.reel ? ` · ${formatEuros(montantSaisi - ligne.reel)}` : ''}
+        </Bouton>
+        <Bouton variante="secondaire" pleine icone="crayon" disabled={!modifie} onclick={enregistrerPrevu}>
+          Changer le prévu de {nomMois(mois, false)}
+        </Bouton>
+      {:else if env && !ligne.horsPrevu}
+        <Bouton variante="secondaire" pleine icone="crayon" disabled={!modifie} onclick={enregistrerPrevu}>
+          Changer le prévu de {nomMois(mois, false)}
+        </Bouton>
+      {/if}
+      {#if ligne.corrige && !ligne.paye}
+        <Bouton variante="discret" pleine onclick={retablir}>Revenir au montant du modèle</Bouton>
+      {/if}
+      {#if aPayer && ligne.prevu}
+        <Bouton variante="secondaire" pleine onclick={reporterLigne}>Pas passé : reporter en {nomMois(ajouterMois(mois, 1), false)}</Bouton>
+      {/if}
+      {#if ligne.paye && !env}
+        <Bouton variante="secondaire" pleine onclick={annulerPaiement}>Annuler le paiement</Bouton>
       {/if}
       <Bouton
-        variante="secondaire"
+        variante={env ? 'principal' : 'secondaire'}
         pleine
+        grand={env}
         icone="plus"
         onclick={() => {
           ligneOuverte = false;
@@ -391,6 +526,12 @@
     grid-template-columns: 1fr 1fr;
     gap: var(--esp-3);
   }
+  .projection {
+    margin-top: var(--esp-3);
+  }
+  .projection .sans-bord {
+    min-height: 32px;
+  }
   .etiquette {
     margin: 0 0 var(--esp-1);
     font-size: 0.85rem;
@@ -442,17 +583,148 @@
     font-weight: 500;
     color: var(--texte-doux);
   }
-  .col {
-    width: 74px;
-    text-align: right;
+  /* ——— lignes de dépenses : un libellé, un montant */
+  .depense {
+    all: unset;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: var(--esp-3);
+    width: 100%;
+    min-height: 60px;
+    padding: var(--esp-2) 0;
+    cursor: pointer;
+  }
+  .depense + .depense {
+    border-top: 1px solid var(--bordure);
+  }
+  .depense:focus-visible {
+    outline: 3px solid var(--primaire);
+    border-radius: var(--rayon-petit);
+  }
+  .statut {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 2px solid var(--bordure);
+    color: var(--surface);
+  }
+  .statut.paye {
+    background: var(--ok);
+    border-color: var(--ok);
+  }
+  .statut.reporte {
+    border-color: var(--attention);
+    color: var(--attention);
+  }
+  .corps {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .titre {
+    font-weight: 650;
+    font-size: 1rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+  .payee .titre {
+    color: var(--texte-doux);
+  }
+  .detail {
+    font-size: 0.8rem;
+    color: var(--texte-doux);
+  }
+  .detail.attention {
+    color: var(--attention);
+    font-weight: 600;
+  }
+  .montant-ligne {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
     flex-shrink: 0;
   }
-  .entetes {
+  .payee .montant-ligne :global(.montant) {
+    color: var(--texte-doux);
+  }
+  .ecart-pastille {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 999px;
+    color: var(--ok);
+    background: var(--ok-doux);
+  }
+  .ecart-pastille.plus {
+    color: var(--danger);
+    background: var(--danger-doux);
+  }
+  /* enveloppes : l'écart au budget se voit sur la barre */
+  .enveloppe {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: var(--esp-3) 0;
+  }
+  .tete,
+  .enveloppe .detail {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--esp-2);
+  }
+  .barre {
+    display: block;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    overflow: hidden;
+  }
+  .rempli {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--ok);
+    transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .attention .rempli {
+    background: var(--attention);
+  }
+  .depasse .rempli {
+    background: var(--danger);
+  }
+  .neutre .rempli {
+    background: var(--texte-doux);
+  }
+  .enveloppe .detail strong {
+    color: var(--texte);
+  }
+  .depasse .ecart,
+  .depasse .ecart strong {
+    color: var(--danger);
+  }
+  .resume-ligne {
     display: flex;
     gap: var(--esp-2);
   }
-  .ligne-mois .col :global(.montant) {
-    font-size: 0.85rem;
+  .resume-ligne > div {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--esp-2) var(--esp-3);
+    border-radius: var(--rayon-petit);
+    background: var(--surface-2);
+  }
+  .ecart-valeur {
+    font-weight: 650;
   }
   .positif {
     color: var(--ok);
@@ -506,10 +778,5 @@
     display: flex;
     flex-direction: column;
     gap: var(--esp-2);
-  }
-  @media (max-width: 380px) {
-    .col {
-      width: 62px;
-    }
   }
 </style>

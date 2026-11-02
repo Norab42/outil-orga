@@ -1,10 +1,11 @@
 /**
- * Rappels : seulement deux, comme demandé.
- *  - une échéance approche et le solde du compte courant ne suffit pas ;
+ * Rappels : seulement ceux-ci, comme demandé.
+ *  - le compte courant est au-delà du découvert autorisé ;
+ *  - une échéance approche et le solde du compte courant (découvert compris) ne suffit pas ;
  *  - la dernière sauvegarde date de plus d'un mois.
  * Aucun rappel de saisie.
  */
-import { alerteSolde, prochainesEcheances } from '../core/compta/calculs';
+import { alerteSolde, prochainesEcheances, situationCourant } from '../core/compta/calculs';
 import { dateLisible, ecartJours, type DateISO } from '../core/dates';
 import { formatEuros } from '../core/money';
 import type { DonneesCompta } from '../core/compta/types';
@@ -47,19 +48,31 @@ function ajouterJours(d: DateISO, n: number): DateISO {
 /** Rappels à afficher maintenant. */
 export function rappelsActifs(d: DonneesCompta, r: Reglages, auj: DateISO): Rappel[] {
   const res: Rappel[] = [];
-  const a = alerteSolde(d, auj, JOURS_AVANT_ECHEANCE);
-  if (a) {
+  const s = situationCourant(d, auj);
+  if (s && s.decouvert > 0 && s.disponible < 0) {
     res.push({
-      cle: `solde-${a.echeance.poste.id}-${a.echeance.date}`,
-      titre: 'Solde insuffisant pour la prochaine échéance',
-      texte: `${a.echeance.poste.libelle} (${dateLisible(a.echeance.date)}) : il faudra ${formatEuros(a.besoin)}, le compte courant a ${formatEuros(a.solde)}.`,
+      cle: `hors-decouvert-${auj.slice(0, 7)}`,
+      titre: 'Au-delà du découvert autorisé',
+      texte: `Le compte courant est à ${formatEuros(s.solde)}, soit ${formatEuros(-s.disponible)} de plus que le découvert autorisé (−${formatEuros(s.decouvert)}). Agios et frais plus élevés à prévoir.`,
       ton: 'danger',
       chemin: '/comptes',
       aPartirDu: auj,
     });
   }
-  const s = rappelSauvegarde(d, r, auj);
-  if (s && s.aPartirDu <= auj) res.push(s);
+  const a = alerteSolde(d, auj, JOURS_AVANT_ECHEANCE);
+  // Déjà au-delà du découvert : le rappel ci-dessus suffit, toutes les échéances sont concernées.
+  if (a && !(s && s.decouvert > 0 && s.disponible < 0)) {
+    res.push({
+      cle: `solde-${a.echeance.poste.id}-${a.echeance.date}`,
+      titre: 'Solde insuffisant pour la prochaine échéance',
+      texte: `${a.echeance.poste.libelle} (${dateLisible(a.echeance.date)}) : il faudra ${formatEuros(a.besoin)}, le compte courant a ${formatEuros(a.solde)}${a.disponible !== a.solde ? ` (${formatEuros(a.disponible)} découvert compris)` : ''}.`,
+      ton: 'danger',
+      chemin: '/comptes',
+      aPartirDu: auj,
+    });
+  }
+  const sv = rappelSauvegarde(d, r, auj);
+  if (sv && sv.aPartirDu <= auj) res.push(sv);
   return res;
 }
 
@@ -69,12 +82,12 @@ export function rappelsActifs(d: DonneesCompta, r: Reglages, auj: DateISO): Rapp
  */
 export function rappelsPlanifies(d: DonneesCompta, r: Reglages, auj: DateISO): Rappel[] {
   const res = [...rappelsActifs(d, r, auj)];
-  const courant = d.comptes.find((c) => c.courant);
-  if (courant?.solde != null) {
+  const courant = situationCourant(d, auj);
+  if (courant) {
     let besoin = 0;
     for (const e of prochainesEcheances(d, auj, 31)) {
       besoin += e.montant ?? 0;
-      if (besoin > courant.solde && ecartJours(auj, e.date) > JOURS_AVANT_ECHEANCE) {
+      if (besoin > courant.disponible && ecartJours(auj, e.date) > JOURS_AVANT_ECHEANCE) {
         res.push({
           cle: `solde-${e.poste.id}-${e.date}`,
           titre: 'Échéance bientôt, solde à vérifier',

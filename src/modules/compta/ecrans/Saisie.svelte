@@ -8,15 +8,21 @@
   import { saisie } from '../saisie.svelte';
   import { formatEuros, lireMontant, versSaisie } from '../../../core/money';
   import { dateLisible, moisDeDate } from '../../../core/dates';
-  import { lignesDuMois } from '../../../core/compta/calculs';
+  import { lignesDuMois, moisCourant } from '../../../core/compta/calculs';
   import type { Nature } from '../../../core/compta/types';
   import {
     ajouterOperation, creerHorsCadre, modifierOperation, retablirOperation, supprimerOperation,
   } from '../actions';
 
+  /** Aujourd'hui, ou le 1er du premier mois suivi s'il n'a pas encore commencé. */
+  function dateParDefaut() {
+    const debut = etat.compta ? `${moisCourant(etat.compta, etat.aujourdhui)}-01` : etat.aujourdhui;
+    return debut > etat.aujourdhui ? debut : etat.aujourdhui;
+  }
+
   let texteMontant = $state('');
   let posteId = $state<string | null>(null);
-  let date = $state(etat.aujourdhui);
+  let date = $state(dateParDefaut());
   let note = $state('');
   let changerDate = $state(false);
   let nouveauHC = $state<string | null>(null);
@@ -48,7 +54,7 @@
     const op = saisie.operation;
     texteMontant = op ? versSaisie(op.montant) : '';
     posteId = op ? op.posteId : saisie.posteParDefaut;
-    date = op ? op.date : etat.aujourdhui;
+    date = op ? op.date : dateParDefaut();
     note = op?.note ?? '';
     changerDate = false;
     nouveauHC = null;

@@ -38,6 +38,8 @@ export interface ExceptionMois {
   montant: Cents | null;
   /** Ligne retirée ponctuellement de ce mois. */
   retire: boolean;
+  /** Prélèvement pas passé ce mois-ci : le reste à payer est reporté sur une ligne du mois suivant. */
+  reporte?: boolean;
 }
 
 export type TypeRevenu = 'salaire' | 'aide' | 'vente' | 'autre';
@@ -100,6 +102,8 @@ export interface Dette {
   incertain: boolean;
   /** Pas encore de remboursement prévu (ex. prêt familial) : comptée dans le total, pas dans les dates de fin. */
   enAttente?: boolean;
+  /** Dette personnelle (famille, amis) : affichée à part, jamais comptée dans les totaux ni les simulations. */
+  personnelle?: boolean;
   /** Position choisie par l'utilisateur dans la liste (glisser-déposer). */
   ordre: number;
 }
@@ -120,6 +124,8 @@ export interface Compte {
   solde: Cents | null;
   dateSolde: DateISO | null;
   courant: boolean;
+  /** Découvert autorisé par la banque, en positif (400 € → 40000). null ou absent = aucun. */
+  decouvertAutorise?: Cents | null;
   ordre: number;
 }
 

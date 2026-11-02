@@ -1,7 +1,7 @@
 /** Toutes les modifications du module compta passent par ici (l'interface n'écrit jamais en base directement). */
 import { chargerCompta, nouvelId, remplacerCompta, sauver, sauverPlusieurs, supprimer, tableCompta } from '../../storage/compta';
 import { ecrireReglage } from '../../storage/reglages';
-import { ajouterMois, aujourdhui, dateEcheance, moisDeDate, type DateISO, type MoisId } from '../../core/dates';
+import { ajouterMois, aujourdhui, dateEcheance, deMois, moisDeDate, type DateISO, type MoisId } from '../../core/dates';
 import type { Cents } from '../../core/money';
 import { comptesDepart, polesDepart } from '../../core/compta/defauts';
 import { donneesVides, type Nature, type Operation, type PosteModele, type Revenu, type TypeRevenu } from '../../core/compta/types';
@@ -94,6 +94,27 @@ export async function retablirPrevu(moisId: MoisId, posteId: string) {
 export async function retirerDuMois(moisId: MoisId, posteId: string) {
   const ex = await exception(moisId, posteId);
   await sauver('exceptions', { id: ex?.id ?? nouvelId(), moisId, posteId, montant: null, retire: true });
+}
+
+/**
+ * Prélèvement pas passé : ce mois-ci, le prévu est ramené à ce qui a été payé (rien, souvent), et le
+ * reste s'ajoute au mois suivant sur une ligne « report », à côté de la mensualité normale (il passera double).
+ * Rend une fonction qui annule le report.
+ */
+export async function reporterAuMoisSuivant(poste: PosteModele, moisId: MoisId, prevu: Cents, reel: Cents) {
+  const avant = await exception(moisId, poste.id);
+  const suivant = ajouterMois(moisId, 1);
+  await sauver('exceptions', { id: avant?.id ?? nouvelId(), moisId, posteId: poste.id, montant: reel, retire: false, reporte: true });
+  const report = await nouveauPoste({
+    libelle: `${poste.libelle} (report ${deMois(moisId)})`,
+    nature: poste.nature, montant: prevu - reel, jour: poste.jour, detteId: poste.detteId,
+    debut: suivant, fin: suivant, ordre: poste.ordre + 0.01,
+  });
+  return async () => {
+    await supprimer('postes', report.id);
+    if (avant) await sauver('exceptions', avant);
+    else await retablirPrevu(moisId, poste.id);
+  };
 }
 
 /** Ligne ajoutée ponctuellement à un mois. */

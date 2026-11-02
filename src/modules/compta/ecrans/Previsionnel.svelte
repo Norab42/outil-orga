@@ -10,14 +10,14 @@
   import { etat } from '../../../app/etat.svelte';
   import * as act from '../actions';
   import { somme } from '../../../core/money';
-  import { moisDeDate, nomMois, nomMoisCourt } from '../../../core/dates';
-  import { posteActif } from '../../../core/compta/calculs';
+  import { nomMois, nomMoisCourt } from '../../../core/dates';
+  import { moisCourant as moisEnCours, posteActif } from '../../../core/compta/calculs';
   import {
     LIBELLE_NATURE, LIBELLE_TYPE_REVENU, type Nature, type Pole, type PosteModele, type RevenuModele,
   } from '../../../core/compta/types';
 
   let d = $derived(etat.compta!);
-  let moisCourant = $derived(moisDeDate(etat.aujourdhui));
+  let moisCourant = $derived(moisEnCours(d, etat.aujourdhui));
   const NATURES: Nature[] = ['charge', 'credit', 'enveloppe', 'horsCadre'];
   let groupes = $derived(
     NATURES.map((n) => ({

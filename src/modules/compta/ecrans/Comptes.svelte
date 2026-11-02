@@ -8,7 +8,7 @@
   import ChampMontant from '../../../ui/kit/ChampMontant.svelte';
   import { etat } from '../../../app/etat.svelte';
   import * as act from '../actions';
-  import { somme } from '../../../core/money';
+  import { formatEuros, somme } from '../../../core/money';
   import { dateLisible, ecartJours } from '../../../core/dates';
   import type { Compte, Pole } from '../../../core/compta/types';
 
@@ -21,8 +21,8 @@
   let ouvert = $state(false);
   function ouvrir(c: Compte | null) {
     edite = c
-      ? { ...c }
-      : { id: '', nom: '', solde: null, dateSolde: null, courant: false, ordre: Math.max(0, ...d.comptes.map((x) => x.ordre)) + 1 };
+      ? { ...c, decouvertAutorise: c.decouvertAutorise ?? null }
+      : { id: '', nom: '', solde: null, dateSolde: null, courant: false, decouvertAutorise: null, ordre: Math.max(0, ...d.comptes.map((x) => x.ordre)) + 1 };
     ouvert = true;
   }
   async function enregistrer(e: SubmitEvent) {
@@ -73,6 +73,12 @@
               mis à jour le {dateLisible(c.dateSolde)}{ecartJours(c.dateSolde, etat.aujourdhui) > 14 ? ' · à vérifier' : ''}
             {:else}jamais renseigné{/if}
           </p>
+          {#if c.courant && c.decouvertAutorise}
+            <p class="petit doux">
+              découvert autorisé : −{formatEuros(c.decouvertAutorise)}
+              {#if c.solde != null && c.solde < -c.decouvertAutorise}<span class="hors">· dépassé de {formatEuros(-c.solde - c.decouvertAutorise)}</span>{/if}
+            </p>
+          {/if}
         </div>
         <Montant cents={c.solde} taille="grand" vide="—" />
       </div>
@@ -106,6 +112,9 @@
       <label class="champ"><span>Nom</span><input bind:value={edite.nom} required /></label>
       <ChampMontant bind:valeur={edite.solde} libelle="Solde aujourd'hui" negatifAutorise />
       <label class="case"><input type="checkbox" bind:checked={edite.courant} /> C'est le compte courant (celui des prélèvements)</label>
+      {#if edite.courant}
+        <ChampMontant bind:valeur={edite.decouvertAutorise} libelle="Découvert autorisé (ex. 400 pour −400 €)" />
+      {/if}
       <Bouton type="submit" pleine grand>Enregistrer</Bouton>
       {#if edite.id}
         <Bouton variante="danger" pleine icone="poubelle" onclick={async () => { await act.supprimer('comptes', edite!.id); ouvert = false; }}>Supprimer</Bouton>
@@ -141,6 +150,10 @@
   .petit {
     font-size: 0.8rem;
     margin: 2px 0 0;
+  }
+  .hors {
+    color: var(--danger);
+    font-weight: 650;
   }
   .ajout {
     display: flex;

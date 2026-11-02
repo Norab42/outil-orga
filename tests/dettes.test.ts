@@ -46,6 +46,19 @@ describe('dettes', () => {
     expect(simulerTout(d, 0, AUJ).fin).toBe('2027-01');
   });
 
+  it('dette personnelle : à part, hors du total et de la simulation', () => {
+    const d = donneesVides();
+    const papa = dette({ creancier: 'Papa', montantInitial: 750000, enAttente: true, personnelle: true });
+    d.dettes.push(dette({ montantInitial: 30000, mensualite: 10000, taux: 0 }), papa);
+    const b = bilanDettes(d, AUJ);
+    expect(b.total).toBe(30000);
+    expect(b.totalEnAttente).toBe(0);
+    expect(b.etats.map((e) => e.dette.id)).not.toContain(papa.id);
+    expect(b.personnelles.map((e) => e.dette.id)).toEqual([papa.id]);
+    expect(b.totalPersonnel).toBe(750000);
+    expect(simulerTout(d, 0, AUJ).fin).toBe('2027-01');
+  });
+
   it('crédit rattaché qui commence le mois prochain : sa mensualité est reprise', () => {
     const d = donneesVides();
     const x = dette({ montantInitial: 100000 });
